@@ -4,28 +4,25 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
-use Laravel\WorkOS\Http\Requests\AuthKitAccountDeletionRequest;
 
 class ProfileController extends Controller
 {
     /**
-     * Show the user's profile settings page.
+     * Get the user's profile.
      */
-    public function edit(Request $request): Response
+    public function show(Request $request): JsonResponse
     {
-        return Inertia::render('settings/Profile', [
-            'status' => $request->session()->get('status'),
+        return response()->json([
+            'user' => $request->user(),
         ]);
     }
 
     /**
      * Update the user's profile settings.
      */
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request): JsonResponse
     {
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -33,16 +30,21 @@ class ProfileController extends Controller
 
         $request->user()->update(['name' => $request->name]);
 
-        return to_route('profile.edit');
+        return response()->json([
+            'message' => 'Profile updated successfully',
+            'user' => $request->user(),
+        ]);
     }
 
     /**
      * Delete the user's account.
      */
-    public function destroy(AuthKitAccountDeletionRequest $request): RedirectResponse
+    public function destroy(Request $request): JsonResponse
     {
-        return $request->delete(
-            using: fn (User $user) => $user->delete()
-        );
+        $request->user()->delete();
+
+        return response()->json([
+            'message' => 'Account deleted successfully',
+        ]);
     }
 }

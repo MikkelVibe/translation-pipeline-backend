@@ -1,17 +1,14 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
-use Laravel\WorkOS\Http\Middleware\ValidateSessionWithWorkOS;
 
-Route::get('/', fn () => Inertia::render('Welcome'));
+Route::get('/', function () {
+    return response()->json(['message' => 'Translation Pipeline API']);
+});
 
-Route::middleware([
-    'auth',
-    ValidateSessionWithWorkOS::class,
-])->group(function () {
+Route::middleware(['auth'])->group(function () {
     Route::get('dashboard', function () {
-        return Inertia::render('Dashboard');
+        return response()->json(['message' => 'Dashboard']);
     })->name('dashboard');
 });
 
