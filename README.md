@@ -7,7 +7,6 @@ Vær sikker på at du har følgende installeret:
 -   **Laravel Herd** --
     https://herd.laravel.com/download/latest/windows\
 -   **Git**\
--   **Node.js (LTS recommended)**
 
 ## Installation og Setup
 
@@ -29,14 +28,7 @@ cd <PROJECT_FOLDER>
 composer install
 ```
 
-### 3. Installer Frontend afhængigheder (Dependencies) og Build Assets
-
-``` bash
-npm install
-npm run build
-```
-
-### 4. Tilføj projektet til Laravel Herd
+### 3. Tilføj projektet til Laravel Herd
 
 1.  Åben **Laravel Herd**
 2.  Klik på **Add Site**
