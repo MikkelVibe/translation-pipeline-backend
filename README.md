@@ -7,7 +7,6 @@ Vær sikker på at du har følgende installeret:
 -   **Laravel Herd** --
     https://herd.laravel.com/download/latest/windows\
 -   **Git**\
--   **Composer**\
 -   **Node.js (LTS recommended)**
 
 ## Installation og Setup
@@ -26,20 +25,11 @@ cd <PROJECT_FOLDER>
 
 ### 2. Installer PHP afhængigheder (Dependencies)
 
-``` PowerShell
-composer install
-```
-
 ``` bash
 composer install
 ```
 
 ### 3. Installer Frontend afhængigheder (Dependencies) og Build Assets
-
-``` PowerShell
-npm install
-npm run build
-```
 
 ``` bash
 npm install
@@ -56,9 +46,8 @@ npm run build
 
 Projektet skulle gerne være tilgængeligt nu på:
 
-    https://myproject.test
+    https://myproject.test/api
 
-## ✅ Færdig!
+Test med:
 
-Herfra skulle backend være installeret, frontenden være bygget, og 
-siden er "served" gennem Herd -- og du kan nu udvikle lokalt.
+    https://myproject.test/api/ping
