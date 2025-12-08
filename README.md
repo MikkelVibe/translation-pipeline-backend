@@ -6,20 +6,15 @@ Vær sikker på at du har følgende installeret:
 
 -   **Laravel Herd** --
     https://herd.laravel.com/download/latest/windows\
--   **Git**\
+-   **Git**
 
 ## Installation og Setup
 
 ### 1. Clone dit Repo
 
-``` PowerShell
-git clone <REPOSITORY_URL>
-Set-Location <PROJECT_FOLDER>
-```
-
 ``` bash
-git clone <REPOSITORY_URL>
-cd <PROJECT_FOLDER>
+git clone 
+cd
 ```
 
 ### 2. Installer PHP afhængigheder (Dependencies)
