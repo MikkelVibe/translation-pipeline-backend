@@ -41,13 +41,13 @@ npm run build
 1.  Åben **Laravel Herd**
 2.  Klik på **Add Site**
 3.  Vælg projektmappen
-4.  Vælg et domæne (f.eks. `myproject.test`)
+4.  Vælg et domæne
 5.  Gem
 
 Projektet skulle gerne være tilgængeligt nu på:
 
-    https://myproject.test/api
+    https://translation-pipeline-backend.test/api
 
 Test med:
 
-    https://myproject.test/api/ping
+    https://translation-pipeline-backend.test/api/ping
