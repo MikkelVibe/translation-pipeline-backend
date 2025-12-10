@@ -16,6 +16,10 @@ class RabbitMQService {
          password: env(key: 'RABBITMQ_PASSWORD')
       );
    }
+
+   public function __destruct() {
+      $this->connection->close();
+   }
    
    public function publish(string $queue, array $payload): void {
       $channel = $this->connection->channel();
@@ -40,6 +44,5 @@ class RabbitMQService {
       );
    
       $channel->close();
-      $this->connection->close();
    }
 }
