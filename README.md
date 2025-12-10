@@ -7,6 +7,8 @@ Vær sikker på at du har følgende installeret:
 -   **Laravel Herd** --
     https://herd.laravel.com/download/latest/windows\
 -   **Git**
+-   **Docker**
+
 
 ## Installation og Setup
 
@@ -38,3 +40,9 @@ Projektet skulle gerne være tilgængeligt nu på:
 Test med:
 
     https://translation-pipeline-backend.test/api/ping
+
+### 4. Start compose
+
+``` bash
+docker compose up -d
+```
