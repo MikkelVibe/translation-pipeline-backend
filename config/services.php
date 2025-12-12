@@ -41,4 +41,9 @@ return [
         'redirect_url' => env('WORKOS_REDIRECT_URL'),
     ],
 
+    'shopware' => [
+        'url' => env('SHOPWARE_API_URL'),
+        'token' => env('SHOPWARE_API_TOKEN'),
+    ],
+
 ];
