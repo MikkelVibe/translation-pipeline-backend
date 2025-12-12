@@ -49,7 +49,7 @@ class TranslationWorker extends Command
             queue: 'translation_queue',
             consumer_tag: '',
             no_local: false,
-            no_ack: true,
+            no_ack: false,
             exclusive: false,
             nowait: false,
             callback: $callback
