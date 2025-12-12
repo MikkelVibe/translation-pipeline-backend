@@ -51,8 +51,6 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
 
         $url = "{$this->baseUrl}/product";
 
-        echo "[SHOPWARE] Fetching " . count($ids) . " products by IDs\n";
-
         $response = Http::withHeaders([
             'sw-access-key' => $this->token,
             'Content-Type' => 'application/json',
@@ -74,7 +72,6 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
         }
 
         $data = $response->json('elements') ?? [];
-        echo "[SHOPWARE] Fetched " . count($data) . " products by IDs\n";
 
         return collect($data)
             ->map(fn(array $raw) => $this->mapToProductDataDto($raw))

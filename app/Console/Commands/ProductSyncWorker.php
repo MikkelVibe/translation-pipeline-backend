@@ -9,9 +9,9 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class ProductSyncWorker extends Command
 {
-    protected $signature = 'worker:product-sync';
+    protected string $signature = 'worker:product-sync';
 
-    protected $description = 'Fetch products and publish them to RabbitMQ';
+    protected string $description = 'Fetch products and publish them to RabbitMQ';
 
     public function __construct(
         private readonly ProductDataProviderInterface $productService,
@@ -38,39 +38,24 @@ class ProductSyncWorker extends Command
         $this->info('Waiting for messages on product_fetch_queue…');
 
         $callback = function ($message) use (&$rabbit, &$productService) {
-            echo "[PRODUCT SYNC] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-            echo "[PRODUCT SYNC] Message received\n";
-            
             $rabbit = $this->rabbit;
             $productService = $this->productService;
-            
+
             $payload = json_decode($message->body, true);
 
-            if (! is_array($payload) || ! isset($payload['type'])) {
-                echo "[PRODUCT SYNC] ❌ Invalid message format\n";
+            if (!is_array($payload) || ! isset($payload['type'])) {
                 return;
             }
 
-            echo "[PRODUCT SYNC] Job Type: {$payload['type']}\n";
-
-            /** -------------------------------------------------------
-             ** TYPE = IDS
-             ** ----------------------------------------------------- */
             if ($payload['type'] === 'ids') {
 
                 $ids = $payload['ids'] ?? [];
-                echo "[PRODUCT SYNC] Fetching " . count($ids) . " products by IDs\n";
 
-                // Fetch all products by IDs in a single API call
                 $products = $productService->fetchProductByIds($ids);
 
                 if ($products->isEmpty()) {
-                    echo "[PRODUCT SYNC] ⚠️  No products found\n";
                     return;
                 }
-
-                echo "[PRODUCT SYNC] ✓ Found {$products->count()} products\n";
-                echo "[PRODUCT SYNC] Publishing to translation queue...\n";
 
                 foreach ($products as $product) {
                     $rabbit->publish(
@@ -84,42 +69,27 @@ class ProductSyncWorker extends Command
                             'SEOKeywords' => $product->SEOKeywords,
                         ]
                     );
-                }
-                
-                echo "[PRODUCT SYNC] ✓ Published {$products->count()} products\n";
-            }
 
-            if ($payload['type'] === 'range') {
+                    echo "[PRODUCT SYNC] Published product ID {$product->id}\n";
+                }
+            }
+            else if ($payload['type'] === 'range') {
 
                 $startPage = $payload['start_page'];
                 $endPage = $payload['end_page'];
                 $limit = $payload['limit'] ?? 100;
-                
-                $totalPages = $endPage - $startPage + 1;
-
-                echo "[PRODUCT SYNC] Processing page range: {$startPage}-{$endPage} ({$totalPages} pages, {$limit} per page)\n";
-
-                $totalPublished = 0;
 
                 for ($page = $startPage; $page <= $endPage; $page++) {
 
-                    // Your fetchProducts() NEEDS offset — so convert page → offset
                     $offset = ($page - 1) * $limit;
 
-                    echo "[PRODUCT SYNC] → Page {$page}/{$endPage}... ";
-
-                    // Fetch using your existing method
                     $products = $productService->fetchProducts(
                         limit: $limit,
                         offset: $offset
                     );
 
-                    if ($products->isEmpty()) {
-                        echo "empty\n";
-                        continue;
-                    }
-
                     foreach ($products as $product) {
+                        
                         $rabbit->publish(
                             queue: 'product_translate_queue',
                             payload: [
@@ -133,23 +103,9 @@ class ProductSyncWorker extends Command
                         );
                     }
 
-                    $totalPublished += $products->count();
-                    echo "✓ {$products->count()} products\n";
-
-                    // Clear products collection to free memory after processing each page
-                    unset($products);
-                    
-                    // Force garbage collection to reclaim memory
-                    if ($page % 10 === 0) {
-                        gc_collect_cycles();
-                        echo "[PRODUCT SYNC] 🧹 Memory cleanup (page {$page})\n";
-                    }
+                    echo "[PRODUCT SYNC] Published all products from page {$page}\n";
                 }
-                
-                echo "[PRODUCT SYNC] ✓ Completed: {$totalPublished} products published\n";
             }
-            
-            echo "[PRODUCT SYNC] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
         };
 
         $channel->basic_consume(
