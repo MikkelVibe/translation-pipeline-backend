@@ -1,3 +1,10 @@
+# Shared environment variables using YAML anchors
+x-rabbitmq-env: &rabbitmq-env
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: 5672
+  RABBITMQ_USER: guest
+  RABBITMQ_PASSWORD: guest
+
 services:
   rabbitmq:
     image: rabbitmq:4.2.0-management
@@ -17,10 +24,19 @@ services:
       context: .
       dockerfile: docker/worker-translation/Dockerfile
     environment:
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USER: guest
-      RABBITMQ_PASSWORD: guest
+      <<: *rabbitmq-env
+    depends_on:
+      - rabbitmq
+    restart: always
+
+  worker-product-sync:
+    build:
+      context: .
+      dockerfile: docker/worker-product-sync/Dockerfile
+    environment:
+      <<: *rabbitmq-env
+      SHOPWARE_API_URL: ${SHOPWARE_API_URL}
+      SHOPWARE_API_TOKEN: ${SHOPWARE_API_TOKEN}
     depends_on:
       - rabbitmq
     restart: always

@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
 RUN curl -sS https://getcomposer.org/installer | php -- \
     && mv composer.phar /usr/local/bin/composer
 
+# Configure PHP memory limit for worker (256MB should be sufficient for translation workers)
+RUN echo "memory_limit = 256M" > /usr/local/etc/php/conf.d/memory-limit.ini
+
 # Copy project into container
 COPY . .
 

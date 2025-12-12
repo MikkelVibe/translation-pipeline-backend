@@ -2,10 +2,10 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
-use App\Services\DataProvider\ProductDataProviderInterface;
-// use App\Services\DataProvider\ShopwareProductDataProvider;
 use App\Services\DataProvider\DummyProductDataProvider;
+use App\Services\DataProvider\ProductDataProviderInterface;
+use App\Services\DataProvider\ShopwareProductDataProvider;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -14,19 +14,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        # Dependency Injections
-        
-        // SHOPWARE DI
-        // $this->app->bind(
-        // ProductDataProviderInterface::class,
-        // ShopwareProductDataProvider::class,
-        // );
-        
-        // DUMMY DI
+        // Dependency Injections
+
+        // SHOPWARE DI - Configured with values from config
         $this->app->bind(
-            ProductDataProviderInterface::class, 
-            DummyProductDataProvider::class
+            ProductDataProviderInterface::class,
+            fn() => new ShopwareProductDataProvider(
+                baseUrl: rtrim((string) config('services.shopware.url'), '/'),
+                token: (string) config('services.shopware.token'),
+            )
         );
+
+        // DUMMY DI (disabled for Shopware testing)
+        // $this->app->bind(
+        //     ProductDataProviderInterface::class,
+        //     DummyProductDataProvider::class
+        // );
     }
 
     /**

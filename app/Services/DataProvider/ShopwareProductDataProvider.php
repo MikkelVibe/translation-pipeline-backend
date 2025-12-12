@@ -1,69 +1,123 @@
 <?php
 
-namespace app\Services\DataProvider;
+namespace App\Services\DataProvider;
 
 use App\DTOs\ProductDataDto;
-use Illuminate\support\Collection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 
 class ShopwareProductDataProvider implements ProductDataProviderInterface
 {
     public function __construct(
-        private readonly string $baseUrl = '',
-        private readonly string $token = '',
-    ) {
-      $this->baseUrl = $this->baseUrl ?: rtrim(config('services.shopware.url'),'/');
-      $this->token = $this->token ?: (string) config('services.shopware.token');
-    }
+        private readonly string $baseUrl,
+        private readonly string $token,
+    ) {}
 
     public function fetchProducts(int $limit = 100, int $offset = 0): Collection
     {
-      $url = "{$this->baseUrl}/api/product"; // Match med Shopware's api endpoint URIs for søgning af produkter
-      $response = Http::withToken($this->token)
-         ->post($url, [
-            'page' => intdiv($offset, $limit) + 1,
-            'limit' => $limit,
-            'filter' => [], // senere kan filtre som "needs translation" tilføjes her (slet kommentar efter tilføjelse)
-         ]);
+        $url = "{$this->baseUrl}/store-api/product";
 
-      $data = $response->json('data') ?? []; // Nullish coalescing hvis ingen data --> nyt array (validerer)
+        $page = intdiv($offset, $limit) + 1;
 
-      return collect($data)
-         ->map(fn (array $raw) => $this->mapToProductDataDto($raw))
-         ->filter();
+        $response = Http::withHeaders([
+            'sw-access-key' => $this->token,
+            'Content-Type' => 'application/json',
+        ])
+            ->post($url, [
+                'page' => $page,
+                'limit' => $limit,
+            ]);
+
+        if (!$response->successful()) {
+            logger()->error('Failed to fetch products', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+            return collect();
+        }
+
+        $data = $response->json('elements') ?? [];
+
+        return collect($data)
+            ->map(fn(array $raw) => $this->mapToProductDataDto($raw))
+            ->filter();
     }
 
-    public function fetchProductById(string $id): ?ProductDataDto
+    public function fetchProductByIds(array $ids): Collection
     {
-      $url = "{$this->baseUrl}/api/product/{$id}"; 
-      $response = Http::withToken($this->token)
-         ->get($url);
+        if (empty($ids)) {
+            return collect();
+        }
 
-         if (! $response->successful()) {
+        $url = "{$this->baseUrl}/product";
+
+        echo "[SHOPWARE] Fetching " . count($ids) . " products by IDs\n";
+
+        $response = Http::withHeaders([
+            'sw-access-key' => $this->token,
+            'Content-Type' => 'application/json',
+        ])
+            ->post($url, [
+                'ids' => $ids,
+                'limit' => count($ids),
+            ]);
+
+        if (!$response->successful()) {
+            echo "[SHOPWARE] Failed to fetch products by IDs. Status: {$response->status()}\n";
+            logger()->error('Failed to fetch products by IDs', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'ids' => $ids,
+            ]);
+
+            return collect();
+        }
+
+        $data = $response->json('elements') ?? [];
+        echo "[SHOPWARE] Fetched " . count($data) . " products by IDs\n";
+
+        return collect($data)
+            ->map(fn(array $raw) => $this->mapToProductDataDto($raw))
+            ->filter();
+    }
+
+    private function mapToProductDataDto(array $raw): ?ProductDataDto
+    {
+        $title = $raw['translated']['name'] ?? $raw['name'] ?? null;
+
+        $description = $raw['translated']['description']
+            ?? $raw['description']
+            ?? null;
+
+        $metaTitle = $raw['translated']['metaTitle']
+            ?? $raw['metaTitle']
+            ?? null;
+
+        $metaDescription = $raw['translated']['metaDescription']
+            ?? $raw['metaDescription']
+            ?? null;
+
+        $keywords = $raw['translated']['keywords']
+            ?? $raw['keywords']
+            ?? null;
+
+        $seoKeywords = [];
+        if ($keywords !== null && trim($keywords) !== '') {
+            $seoKeywords = array_map('trim', explode(',', $keywords));
+        }
+
+        // Skip if no title
+        if ($title === null || trim($title) === '') {
             return null;
-         }
+        }
 
-      $raw = $response->json();
-
-      return $this->mapToProductDataDto($raw);
-   }
-
-   private function mapToProductDataDto(array $raw): ?ProductDataDto {
-      $description = $raw['translated']['description'] ?? null;
-
-      if ($description === null || trim($description) === '') {
-         logger()->warning('Product skipped due to missing description', [
-            'product_id' => $raw['id'] ?? null,
-         ]);
-
-         return null;
-      }
-
-      return new ProductDataDto(
-         id: (string) ($raw['id'] ?? ''),
-         sku: (string) ($raw['productNumber'] ?? ''),
-         name: (string) ($raw['translated']['name'] ?? ''),
-         description: $description,
-      );
+        return new ProductDataDto(
+            id: (string) ($raw['id'] ?? ''),
+            title: $title,
+            description: $description,
+            metaTitle: $metaTitle,
+            metaDescription: $metaDescription,
+            SEOKeywords: $seoKeywords,
+        );
     }
 }
