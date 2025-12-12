@@ -51,7 +51,7 @@ class ProductSyncWorker extends Command
 
                 $ids = $payload['ids'] ?? [];
 
-                $products = $productService->fetchProductByIds($ids);
+                $products = $productService->fetchProductsByIds($ids);
 
                 if ($products->isEmpty()) {
                     return;
@@ -112,7 +112,7 @@ class ProductSyncWorker extends Command
             queue: 'product_fetch_queue',
             consumer_tag: '',
             no_local: false,
-            no_ack: true,
+            no_ack: false,
             exclusive: false,
             nowait: false,
             callback: $callback
