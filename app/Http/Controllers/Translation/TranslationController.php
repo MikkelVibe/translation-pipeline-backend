@@ -17,7 +17,7 @@ class TranslationController extends Controller {
             'text' => ['required','string'],
          ]
       );
-
+      
       $this->rabbit->publish(
          queue: 'translation_queue', 
          payload: [

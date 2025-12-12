@@ -12,6 +12,19 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: always
 
+  worker-translation:
+    build:
+      context: .
+      dockerfile: docker/worker-translation/Dockerfile
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    depends_on:
+      - rabbitmq
+    restart: always
+
 volumes:
   rabbitmq_data:
     driver: local

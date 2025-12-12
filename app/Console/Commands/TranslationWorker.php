@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use PhpAmqpLib\connection\AMQPStreamConnection;
+use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class TranslationWorker extends Command
 {
