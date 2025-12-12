@@ -7,23 +7,11 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class TranslationWorker extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
     protected $signature = 'worker:translation';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
     protected $description = 'Consume translation jobs from RabbitMQ';
 
-    /**
-     * Execute the console command.
-     */
+
     public function handle()
     {
         $this->info('Starting translation worker...');
@@ -36,17 +24,24 @@ class TranslationWorker extends Command
         );
 
         $channel = $connection->channel();
-        $channel->queue_declare('translation_queue', false, false, false, false);
+        $channel->queue_declare('product_translate_queue', false, false, false, false);
 
-        $this->info('Waiting for translation_queue message...');
+        $this->info('Waiting for product_translate_queue message...');
 
-        $callback = function($message) {
-            $this->info(string: "Recieved message: {$message->body}");
-            # herfra kalder vi OpenAI gpt + gemmer til db - men senere.
+        $callback = function ($message) {
+            $data = json_decode($message->body, true);
+            
+            $timestamp = date('Y-m-d H:i:s');
+            $id = $data['id'] ?? 'unknown';
+            $title = isset($data['title']) ? substr($data['title'], 0, 40) : 'N/A';
+            
+            echo "[{$timestamp}] 🔄 Processing: {$id} - {$title}...\n";
+            
+            // TODO: Call OpenAI GPT for translation + save to database
         };
 
         $channel->basic_consume(
-            queue: 'translation_queue',
+            queue: 'product_translate_queue',
             consumer_tag: '',
             no_local: false,
             no_ack: false,
