@@ -77,7 +77,7 @@ class ProductSyncWorker extends Command
 
                 $startPage = $payload['start_page'];
                 $endPage = $payload['end_page'];
-                $limit = $payload['limit'] ?? 100;
+                $limit = 100;
 
                 for ($page = $startPage; $page <= $endPage; $page++) {
 
