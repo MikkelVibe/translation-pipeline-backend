@@ -27,5 +27,5 @@ interface ProductDataProviderInterface
      * @param  array<string>  $ids
      * @return Collection<int, ProductDataDto>
      */
-    public function fetchProductByIds(array $ids): Collection;
+    public function fetchProductsByIds(array $ids): Collection;
 }

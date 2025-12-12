@@ -19,7 +19,7 @@ class DummyProductDataProvider implements ProductDataProviderInterface
         ));
     }
 
-    public function fetchProductByIds(array $ids): Collection
+    public function fetchProductsByIds(array $ids): Collection
     {
         return collect($ids)->map(fn ($id) => new ProductDataDto(
             id: $id,

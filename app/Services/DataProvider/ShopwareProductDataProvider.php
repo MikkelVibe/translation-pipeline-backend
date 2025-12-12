@@ -43,7 +43,7 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
             ->filter();
     }
 
-    public function fetchProductByIds(array $ids): Collection
+    public function fetchProductsByIds(array $ids): Collection
     {
         if (empty($ids)) {
             return collect();
