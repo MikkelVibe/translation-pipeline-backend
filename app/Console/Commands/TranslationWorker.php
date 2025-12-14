@@ -7,12 +7,13 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class TranslationWorker extends Command
 {
+    private const CONSUME_QUEUE_NAME = 'product_translate_queue';
+
     protected $signature = 'worker:translation';
 
     protected $description = 'Consume translation jobs from RabbitMQ';
 
-
-    public function handle()
+    public function handle(): int
     {
         $this->info('Starting translation worker...');
 
@@ -24,27 +25,33 @@ class TranslationWorker extends Command
         );
 
         $channel = $connection->channel();
-        $channel->queue_declare('product_translate_queue', false, false, false, false);
+        $channel->queue_declare(self::CONSUME_QUEUE_NAME, false, false, false, false);
 
-        $this->info('Waiting for product_translate_queue message...');
+        $this->info('Waiting for messages on ' . self::CONSUME_QUEUE_NAME);
 
         $callback = function ($message) {
-            $data = json_decode($message->body, true);
-            
-            $timestamp = date('Y-m-d H:i:s');
-            $id = $data['id'] ?? 'unknown';
-            $title = isset($data['title']) ? substr($data['title'], 0, 40) : 'N/A';
-            
-            echo "[{$timestamp}] 🔄 Processing: {$id} - {$title}...\n";
-            
+            $payload = json_decode($message->body, true);
+
+            // Match the structure from ProductSyncWorker - data is nested under 'product'
+            $product = $payload['product'] ?? null;
+
+            if (!$product) {
+                $this->warn('[TRANSLATION] Invalid message format - missing product data');
+
+                return;
+            }
+
+            $id = $product['id'] ?? 'unknown';
+            $this->info("[TRANSLATION] Processing: {$id}");
+
             // TODO: Call OpenAI GPT for translation + save to database
         };
 
         $channel->basic_consume(
-            queue: 'product_translate_queue',
+            queue: self::CONSUME_QUEUE_NAME,
             consumer_tag: '',
             no_local: false,
-            no_ack: true,
+            no_ack: false,
             exclusive: false,
             nowait: false,
             callback: $callback
