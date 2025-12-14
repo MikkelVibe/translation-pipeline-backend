@@ -26,3 +26,7 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+/ai_test/
+/storage/app/ai_test/
+
