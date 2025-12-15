@@ -9,9 +9,9 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class ProductSyncWorker extends Command
 {
-    protected string $signature = 'worker:product-sync';
+    protected $signature = 'worker:product-sync';
 
-    protected string $description = 'Fetch products and publish them to RabbitMQ';
+    protected $description = 'Fetch products and publish them to RabbitMQ';
 
     public function __construct(
         private readonly ProductDataProviderInterface $productService,
