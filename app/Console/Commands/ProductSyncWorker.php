@@ -5,10 +5,15 @@ namespace App\Console\Commands;
 use App\Services\DataProvider\ProductDataProviderInterface;
 use App\Services\RabbitMQService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class ProductSyncWorker extends Command
 {
+    private const PUBLISH_QUEUE_NAME = 'product_translate_queue';
+
+    private const CONSUME_QUEUE_NAME = 'product_fetch_queue';
+
     protected $signature = 'worker:product-sync';
 
     protected $description = 'Fetch products and publish them to RabbitMQ';
@@ -33,83 +38,49 @@ class ProductSyncWorker extends Command
 
         $channel = $connection->channel();
 
-        $channel->queue_declare('product_fetch_queue', false, false, false, false);
+        $channel->queue_declare(self::CONSUME_QUEUE_NAME, false, false, false, false);
 
-        $this->info('Waiting for messages on product_fetch_queue…');
+        $this->info('Waiting for messages on ' . self::CONSUME_QUEUE_NAME);
 
-        $callback = function ($message) use (&$rabbit, &$productService) {
-            $rabbit = $this->rabbit;
-            $productService = $this->productService;
-
+        $callback = function ($message) {
             $payload = json_decode($message->body, true);
 
-            if (!is_array($payload) || ! isset($payload['type'])) {
+            if (! is_array($payload) || ! isset($payload['type'])) {
                 return;
             }
 
             if ($payload['type'] === 'ids') {
-
                 $ids = $payload['ids'] ?? [];
 
-                $products = $productService->fetchProductsByIds($ids);
+                $products = $this->productService->fetchProductsByIds($ids);
 
-                if ($products->isEmpty()) {
-                    return;
-                }
+                $this->publishProductsToQueue($this->rabbit, $products);
 
-                foreach ($products as $product) {
-                    $rabbit->publish(
-                        queue: 'product_translate_queue',
-                        payload: [
-                            'id' => $product->id,
-                            'title' => $product->title,
-                            'description' => $product->description,
-                            'metaTitle' => $product->metaTitle,
-                            'metaDescription' => $product->metaDescription,
-                            'SEOKeywords' => $product->SEOKeywords,
-                        ]
-                    );
+                $this->info('[PRODUCT SYNC] Published all products');
 
-                    echo "[PRODUCT SYNC] Published product ID {$product->id}\n";
-                }
-            }
-            else if ($payload['type'] === 'range') {
+            } elseif ($payload['type'] === 'range') {
 
                 $startPage = $payload['start_page'];
                 $endPage = $payload['end_page'];
                 $limit = 100;
 
                 for ($page = $startPage; $page <= $endPage; $page++) {
-
                     $offset = ($page - 1) * $limit;
 
-                    $products = $productService->fetchProducts(
+                    $products = $this->productService->fetchProducts(
                         limit: $limit,
                         offset: $offset
                     );
 
-                    foreach ($products as $product) {
-                        
-                        $rabbit->publish(
-                            queue: 'product_translate_queue',
-                            payload: [
-                                'id' => $product->id,
-                                'title' => $product->title,
-                                'description' => $product->description,
-                                'metaTitle' => $product->metaTitle,
-                                'metaDescription' => $product->metaDescription,
-                                'SEOKeywords' => $product->SEOKeywords,
-                            ]
-                        );
-                    }
+                    $this->publishProductsToQueue($this->rabbit, $products);
 
-                    echo "[PRODUCT SYNC] Published all products from page {$page}\n";
+                    $this->info("[PRODUCT SYNC] Published all products from page {$page}\n");
                 }
             }
         };
 
         $channel->basic_consume(
-            queue: 'product_fetch_queue',
+            queue: self::CONSUME_QUEUE_NAME,
             consumer_tag: '',
             no_local: false,
             no_ack: false,
@@ -126,5 +97,22 @@ class ProductSyncWorker extends Command
         $connection->close();
 
         return self::SUCCESS;
+    }
+
+    private function publishProductsToQueue(RabbitMQService $rabbit, Collection $products)
+    {
+        if ($products->isEmpty()) {
+            $this->info('[PRODUCT SYNC] No products could be found');
+            return;
+        }
+
+        foreach ($products as $product) {
+            $rabbit->publish(
+                queue: self::PUBLISH_QUEUE_NAME,
+                payload: [
+                    'product' => $product,
+                ]
+            );
+        }
     }
 }

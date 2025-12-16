@@ -10,14 +10,17 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class TranslationWorker extends Command
 {
-    protected $signature = 'worker:translation';
-    protected $description = 'Consume translation jobs from RabbitMQ, translate via OpenAI, and store results';
+    private const CONSUME_QUEUE_NAME = 'product_translate_queue';
 
-    public function handle()
+    protected $signature = 'worker:translation';
+
+    protected $description = 'Consuming translation jobs from RabbitMQ';
+
+    public function handle(): int
     {
         $this->info('Starting translation worker...');
 
-        $queueName = env('RABBITMQ_TRANSLATE_QUEUE', 'product_translate_queue');
+        $queueName = env('RABBITMQ_TRANSLATE_QUEUE', self::CONSUME_QUEUE_NAME);
 
         $connection = new AMQPStreamConnection(
             env('RABBITMQ_HOST', 'rabbitmq'),
@@ -28,8 +31,8 @@ class TranslationWorker extends Command
 
         $channel = $connection->channel();
 
-        // Prefetch 1 = en message ad gangen pr worker
-        $channel->basic_qos(null, 1, null);
+        // Prefetch 1 = one message at a time per worker
+        $channel->basic_qos(0, 1, null);
 
         // queue_declare(passive, durable, exclusive, auto_delete, nowait)
         $channel->queue_declare($queueName, false, false, false, false);
@@ -42,30 +45,40 @@ class TranslationWorker extends Command
             try {
                 $payload = json_decode($message->body, true, 512, JSON_THROW_ON_ERROR);
 
-                // Robust defaults
+                // MASTER: Expect payload structure from ProductSyncWorker
+                $product = $payload['product'] ?? null;
+                if (!is_array($product)) {
+                    $this->warn('[TRANSLATION] Invalid message format - missing product data');
+                    $message->nack(false, false);
+                    return;
+                }
+
+                // IDs + language defaults
                 $jobId = (string) ($payload['jobId'] ?? Str::uuid());
-                $productId = $payload['productId'] ?? ($payload['id'] ?? 'unknown');
+                $productId = $product['id'] ?? ($payload['productId'] ?? 'unknown');
                 $sourceLanguage = (string) ($payload['sourceLanguage'] ?? 'da');
                 $targetLanguage = (string) ($payload['targetLanguage'] ?? 'fi');
 
-                // Vi forventer at I sender "fields" (det I faktisk vil oversætte)
-                // Hvis ikke, prøver vi fallback til hele payload’en (men det er ikke optimalt).
+                // Fields to translate (prefer explicit 'fields', fallback to product)
                 $fields = $payload['fields'] ?? null;
                 if (!is_array($fields)) {
-                    $fields = $payload; // fallback
+                    $fields = $product;
                 }
 
                 $titlePreview = '';
                 if (isset($fields['title']) && is_string($fields['title'])) {
                     $titlePreview = substr($fields['title'], 0, 40);
-                } elseif (isset($payload['title']) && is_string($payload['title'])) {
-                    $titlePreview = substr($payload['title'], 0, 40);
                 }
 
-                $this->line("[{$timestamp}] 🔄 Processing jobId={$jobId} productId={$productId} {$titlePreview}");
+                $this->line(
+                    "[{$timestamp}] 🔄 Processing jobId={$jobId} productId={$productId} {$titlePreview}"
+                );
 
-                // 1) Forbered prompt + input JSON
-                $inputJson = json_encode($fields, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                // 1) Prepare prompt + input JSON
+                $inputJson = json_encode(
+                    $fields,
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                );
 
                 $prompt = <<<PROMPT
 Task:
@@ -106,7 +119,7 @@ Now translate the following product JSON:
 {$inputJson}
 PROMPT;
 
-                // 2) Kald OpenAI
+                // 2) Call OpenAI
                 $apiKey = env('OPENAI_API_KEY');
                 if (!$apiKey) {
                     throw new \RuntimeException('OPENAI_API_KEY is missing in environment');
@@ -123,18 +136,20 @@ PROMPT;
                     ]);
 
                 if (!$response->successful()) {
-                    throw new \RuntimeException("OpenAI error ({$response->status()}): " . $response->body());
+                    throw new \RuntimeException(
+                        "OpenAI error ({$response->status()}): " . $response->body()
+                    );
                 }
 
                 $openAi = $response->json();
 
-                // 3) Udtræk tekst (som gerne skulle være JSON)
+                // 3) Extract text (should be JSON)
                 $text = $this->extractTextFromOpenAiResponse($openAi);
 
-                // 4) Parse JSON fra tekst (hvis modellen har skrevet noget ekstra, prøver vi at “trimme”)
+                // 4) Parse JSON from text
                 $translatedFields = $this->tryParseJsonObject($text);
 
-                // 5) Gem både raw + parsed til fil (før DB)
+                // 5) Save raw + parsed to file (before DB)
                 $dir = storage_path('app/ai_test');
                 @mkdir($dir, 0777, true);
 
@@ -153,24 +168,34 @@ PROMPT;
                 if ($translatedFields !== null) {
                     file_put_contents(
                         "{$dir}/{$base}_translated_fields.json",
-                        json_encode($translatedFields, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+                        json_encode(
+                            $translatedFields,
+                            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
+                        )
                     );
                 } else {
-                    // Hvis parsing fejler, gem rå tekst også
-                    file_put_contents("{$dir}/{$base}_openai_text.txt", (string) $text);
+                    file_put_contents(
+                        "{$dir}/{$base}_openai_text.txt",
+                        (string) $text
+                    );
                 }
 
-                // 6) Hvis vi ikke kunne parse JSON, så betragter vi det som fejl (så I fanger det tidligt)
+                // 6) Fail fast if JSON couldn't be parsed
                 if ($translatedFields === null) {
-                    throw new \RuntimeException("Could not parse valid JSON from OpenAI output. Saved raw output to storage/app/ai_test.");
+                    throw new \RuntimeException(
+                        'Could not parse valid JSON from OpenAI output. ' .
+                        'Saved raw output to storage/app/ai_test.'
+                    );
                 }
 
-                // TODO (næste step): gem i DB + publish til næste queue
+                // TODO: save in DB + publish to next queue
 
-                // ACK
+                // ACK success
                 $message->ack();
 
-                $this->info("✅ Done jobId={$jobId} productId={$productId} -> saved to storage/app/ai_test");
+                $this->info(
+                    "✅ Done jobId={$jobId} productId={$productId} -> saved to storage/app/ai_test"
+                );
             } catch (\Throwable $e) {
                 Log::error('TranslationWorker failed', [
                     'queue' => $queueName,
@@ -179,9 +204,9 @@ PROMPT;
                     'body'  => $message->body ?? null,
                 ]);
 
-                $this->error("Error: " . $e->getMessage());
+                $this->error('Error: ' . $e->getMessage());
 
-                // NACK uden requeue = undgår infinite restart loop på samme message
+                // NACK without requeue avoids infinite loops
                 $message->nack(false, false);
             }
         };
@@ -211,9 +236,11 @@ PROMPT;
      */
     private function extractTextFromOpenAiResponse(array $openAi): string
     {
-        // Responses API kan variere lidt, så vi prøver flere mulige steder.
         // 1) output[0].content[0].text
-        if (isset($openAi['output'][0]['content'][0]['text']) && is_string($openAi['output'][0]['content'][0]['text'])) {
+        if (
+            isset($openAi['output'][0]['content'][0]['text']) &&
+            is_string($openAi['output'][0]['content'][0]['text'])
+        ) {
             return $openAi['output'][0]['content'][0]['text'];
         }
 
@@ -222,8 +249,11 @@ PROMPT;
             return $openAi['output_text'];
         }
 
-        // 3) fallback: stringify hele json (så vi i det mindste gemmer noget)
-        return json_encode($openAi, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+        // 3) fallback: stringify hele json
+        return json_encode(
+            $openAi,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ) ?: '';
     }
 
     /**
@@ -234,19 +264,20 @@ PROMPT;
     {
         $text = trim($text);
 
-        // Direkte JSON?
+        // Direct JSON?
         $decoded = json_decode($text, true);
         if (is_array($decoded)) {
             return $decoded;
         }
 
-        // Hvis modellen har skrevet ekstra tekst, prøv at finde første {...} blok.
+        // Try extracting first {...} block
         $firstBrace = strpos($text, '{');
-        $lastBrace = strrpos($text, '}');
+        $lastBrace  = strrpos($text, '}');
 
         if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
             $maybe = substr($text, $firstBrace, $lastBrace - $firstBrace + 1);
             $decoded2 = json_decode($maybe, true);
+
             if (is_array($decoded2)) {
                 return $decoded2;
             }
