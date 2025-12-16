@@ -2,9 +2,8 @@
 
 namespace App\DTOs;
 
-use JsonSerializable;
 
-class ProductDataDto implements JsonSerializable
+class ProductDataDto
 {
     public function __construct(
         public readonly string $id,
@@ -17,16 +16,4 @@ class ProductDataDto implements JsonSerializable
         /** @var string[] */
         public readonly array $SEOKeywords
     ) {}
-
-    public function jsonSerialize(): array
-    {
-        return [
-            'id' => $this->id,
-            'title' => $this->title,
-            'description' => $this->description,
-            'metaTitle' => $this->metaTitle,
-            'metaDescription' => $this->metaDescription,
-            'SEOKeywords' => $this->SEOKeywords,
-        ];
-    }
 }
