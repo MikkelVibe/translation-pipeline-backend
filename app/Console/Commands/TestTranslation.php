@@ -14,7 +14,7 @@ class TestTranslation extends Command
 
     public function handle()
     {
-        $queueName = env('RABBITMQ_TRANSLATE_QUEUE', 'product_translate_queue');
+        $queueName = config("rabbitmq.queues.translate");
 
         $jobId = (string) Str::uuid();
         $source = (string) $this->option('source');
@@ -39,10 +39,10 @@ class TestTranslation extends Command
         ];
 
         $connection = new AMQPStreamConnection(
-            env('RABBITMQ_HOST', 'rabbitmq'),
-            (int) env('RABBITMQ_PORT', 5672),
-            env('RABBITMQ_USER', 'guest'),
-            env('RABBITMQ_PASSWORD', 'guest')
+            config('rabbitmq.host'),
+            (int) config('rabbitmq.port'),
+            config('rabbitmq.user'),
+            config('rabbitmq.password')
         );
 
         $channel = $connection->channel();
