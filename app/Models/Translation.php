@@ -19,6 +19,14 @@ class Translation extends Model
         'language_id',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'source_text' => 'array',
+            'translated_text' => 'array',
+        ];
+    }
+
     public function jobItem(): BelongsTo
     {
         return $this->belongsTo(JobItem::class);

@@ -61,4 +61,29 @@ class RabbitMQService
 
         $channel->close();
     }
+
+    public function publishBatch(string $queue, array $payloads): void
+    {
+        if (empty($payloads)) {
+            return;
+        }
+
+        $connection = $this->getConnection();
+        $channel = $connection->channel();
+
+        $channel->queue_declare(
+            queue: $queue,
+            passive: false,
+            durable: false,
+            exclusive: false,
+            auto_delete: false
+        );
+
+        foreach ($payloads as $payload) {
+            $message = new AMQPMessage(json_encode($payload));
+            $channel->basic_publish($message, '', $queue);
+        }
+
+        $channel->close();
+    }
 }

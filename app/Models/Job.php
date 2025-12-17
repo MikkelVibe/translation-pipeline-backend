@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\JobItemStatus;
 use App\Enums\JobStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,16 +21,15 @@ class Job extends Model
         'source_lang_id',
         'target_lang_id',
         'prompt_id',
-        'status',
         'total_items',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'status' => JobStatus::class,
-        ];
-    }
+    protected $appends = [
+        'status',
+        'completed_items',
+        'failed_items',
+        'progress_percentage',
+    ];
 
     public function user(): BelongsTo
     {
@@ -59,5 +59,47 @@ class Job extends Model
     public function items(): HasMany
     {
         return $this->hasMany(JobItem::class);
+    }
+
+    public function getStatusAttribute(): JobStatus
+    {
+        $itemStatuses = $this->items()->pluck('status');
+
+        // If any items have errors, job has failed
+        if ($itemStatuses->contains(JobItemStatus::Error)) {
+            return JobStatus::Failed;
+        }
+
+        // If all items are done, job is completed
+        if ($itemStatuses->every(fn ($status) => $status === JobItemStatus::Done)) {
+            return JobStatus::Completed;
+        }
+
+        // If any items are processing or queued, job is running
+        if ($itemStatuses->contains(JobItemStatus::Processing) || $itemStatuses->contains(JobItemStatus::Queued)) {
+            return JobStatus::Running;
+        }
+
+        // Default to pending
+        return JobStatus::Pending;
+    }
+
+    public function getCompletedItemsAttribute(): int
+    {
+        return $this->items()->where('status', JobItemStatus::Done)->count();
+    }
+
+    public function getFailedItemsAttribute(): int
+    {
+        return $this->items()->where('status', JobItemStatus::Error)->count();
+    }
+
+    public function getProgressPercentageAttribute(): float
+    {
+        if ($this->total_items === 0) {
+            return 0;
+        }
+
+        return round(($this->completed_items / $this->total_items) * 100, 2);
     }
 }

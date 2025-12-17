@@ -2,18 +2,21 @@
 
 namespace App\Console\Commands;
 
+use App\DTOs\ProductDataDto;
+use App\DTOs\ProductSyncMessageDto;
 use App\Enums\JobItemStatus;
+use App\Enums\Queue;
 use App\Models\Job;
 use App\Models\JobItem;
 use App\Services\DataProvider\ProductDataProviderInterface;
 use App\Services\RabbitMQService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class ProductSyncWorker extends Command
 {
     protected $signature = 'worker:product-sync';
-
     protected $description = 'Fetch products and publish them to RabbitMQ';
 
     public function __construct(
@@ -36,9 +39,7 @@ class ProductSyncWorker extends Command
 
         $channel = $connection->channel();
 
-        $channel->queue_declare('product_fetch_queue', false, false, false, false);
-
-        $this->info('Waiting for messages on product_fetch_queue…');
+        $channel->queue_declare(Queue::ProductFetch->value, false, false, false, false);
 
         $callback = function ($message) use (&$rabbit, &$productService) {
             $rabbit = $this->rabbit;
@@ -46,67 +47,31 @@ class ProductSyncWorker extends Command
 
             $payload = json_decode($message->body, true);
 
-            if (!is_array($payload) || ! isset($payload['type'])) {
+            $result = $this->validateCallback($payload);
+            if (!$result) {
                 return;
             }
 
-            // Get or create the job from payload
-            $jobId = $payload['job_id'] ?? null;
-            
-            if (!$jobId) {
-                echo "[PRODUCT SYNC] Error: No job_id provided in payload\n";
-                return;
-            }
+            [$messageData, $job] = $result;
 
-            $job = Job::find($jobId);
-            
-            if (!$job) {
-                echo "[PRODUCT SYNC] Error: Job {$jobId} not found\n";
-                return;
-            }
-
-            if ($payload['type'] === 'ids') {
-
-                $ids = $payload['ids'] ?? [];
-
-                $products = $productService->fetchProductsByIds($ids);
+            if ($messageData->isIdsType()) {
+                $products = $productService->fetchProductsByIds($messageData->ids);
 
                 if ($products->isEmpty()) {
+                    echo "[PRODUCT SYNC] No products found for provided IDs\n";
+
                     return;
                 }
 
-                foreach ($products as $product) {
-                    // Create job item in database
-                    $jobItem = JobItem::create([
-                        'job_id' => $job->id,
-                        'external_id' => $product->id,
-                        'status' => JobItemStatus::Queued,
-                    ]);
+                $this->processBatch($products, $job, $rabbit);
+            } elseif ($messageData->isRangeType()) {
+                $startPage = $messageData->startPage;
+                $endPage = $messageData->endPage;
+                $limit = $messageData->limit ?? 100;
 
-                    // Publish to translation queue
-                    $rabbit->publish(
-                        queue: 'product_translate_queue',
-                        payload: [
-                            'id' => $product->id,
-                            'title' => $product->title,
-                            'description' => $product->description,
-                            'metaTitle' => $product->metaTitle,
-                            'metaDescription' => $product->metaDescription,
-                            'SEOKeywords' => $product->SEOKeywords,
-                        ]
-                    );
-
-                    echo "[PRODUCT SYNC] Created job item {$jobItem->id} and published product ID {$product->id}\n";
-                }
-            }
-            else if ($payload['type'] === 'range') {
-
-                $startPage = $payload['start_page'];
-                $endPage = $payload['end_page'];
-                $limit = 100;
+                echo "[PRODUCT SYNC] Processing pages {$startPage} to {$endPage}\n";
 
                 for ($page = $startPage; $page <= $endPage; $page++) {
-
                     $offset = ($page - 1) * $limit;
 
                     $products = $productService->fetchProducts(
@@ -114,37 +79,22 @@ class ProductSyncWorker extends Command
                         offset: $offset
                     );
 
-                    foreach ($products as $product) {
-                        // Create job item in database
-                        $jobItem = JobItem::create([
-                            'job_id' => $job->id,
-                            'external_id' => $product->id,
-                            'status' => JobItemStatus::Queued,
-                        ]);
-                        
-                        // Publish to translation queue
-                        $rabbit->publish(
-                            queue: 'product_translate_queue',
-                            payload: [
-                                'id' => $product->id,
-                                'title' => $product->title,
-                                'description' => $product->description,
-                                'metaTitle' => $product->metaTitle,
-                                'metaDescription' => $product->metaDescription,
-                                'SEOKeywords' => $product->SEOKeywords,
-                            ]
-                        );
+                    if ($products->isEmpty()) {
+                        echo "[PRODUCT SYNC] No products found on page {$page}\n";
 
-                        echo "[PRODUCT SYNC] Created job item {$jobItem->id} for product ID {$product->id}\n";
+                        continue;
                     }
 
-                    echo "[PRODUCT SYNC] Published all products from page {$page}\n";
+                    echo "[PRODUCT SYNC] Processing page {$page} with " . count($products) . " products\n";
+                    $this->processBatch($products, $job, $rabbit);
                 }
+
+                echo "[PRODUCT SYNC] Completed processing pages {$startPage} to {$endPage}\n";
             }
         };
 
         $channel->basic_consume(
-            queue: 'product_fetch_queue',
+            queue: Queue::ProductFetch->value,
             consumer_tag: '',
             no_local: false,
             no_ack: false,
@@ -161,5 +111,117 @@ class ProductSyncWorker extends Command
         $connection->close();
 
         return self::SUCCESS;
+    }
+
+    private function validateProduct(ProductDataDto $product): bool
+    {
+        try {
+            // Check if id exists and is valid
+            if (empty($product->id)) {
+                echo "[PRODUCT SYNC] Invalid product: empty id\n";
+
+                return false;
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            echo "[PRODUCT SYNC] Error validating product: {$e->getMessage()}\n";
+
+            return false;
+        }
+    }
+
+    private function validateCallback($payload): ?array
+    {
+        try {
+            $messageData = ProductSyncMessageDto::fromArray($payload);
+        } catch (\Exception $e) {
+            echo "[PRODUCT SYNC] Error parsing message: {$e->getMessage()}\n";
+            return null;
+        }
+
+        $job = Job::find($messageData->jobId);
+
+        if (!$job) {
+            echo "[PRODUCT SYNC] Error: Job {$messageData->jobId} not found\n";
+            return null;
+        }
+
+        return [$messageData, $job];
+    }
+
+    /**
+     * @param Collection<int, ProductDataDto> $products
+     */
+    private function processBatch(Collection $products, Job $job, RabbitMQService $rabbit): void
+    {
+        if ($products->isEmpty()) {
+            return;
+        }
+
+        // validating products decreases chance of a batch failing and if a batch fails thats 999 wasted. Its very unlikely the batch will fail. But this just removes the potential failing products from ever hitting the batch decreasing the chance further.
+        $validProducts = [];
+        $invalidCount = 0;
+
+        foreach ($products as $product) {
+            if ($this->validateProduct($product)) {
+                $validProducts[] = $product;
+            } else {
+                $invalidCount++;
+            }
+        }
+
+        if (empty($validProducts)) {
+            echo "[PRODUCT SYNC] No valid products to process\n";
+
+            return;
+        }
+
+        try {
+            // Prepare values for bulk insert
+            $values = [];
+            $now = now();
+
+            foreach ($validProducts as $product) {
+                $values[] = $job->id;
+                $values[] = $product->id;
+                $values[] = JobItemStatus::Queued->value;
+                $values[] = $now;
+                $values[] = $now;
+            }
+
+            // Build placeholders: (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), ...
+            $placeholders = implode(', ', array_fill(0, count($validProducts), '(?, ?, ?, ?, ?)'));
+
+            // Raw sql to take advantage of RETURNING in postgres, it gives all generated ids which are needed for the message
+            $insertedIds = \DB::select(
+                "INSERT INTO job_items (job_id, external_id, status, created_at, updated_at) 
+                 VALUES {$placeholders} 
+                 RETURNING id",
+                $values
+            );
+
+            // Add the generated id and create the payloads
+            $payloads = [];
+            foreach ($validProducts as $index => $product) {
+                $payloads[] = [
+                    'job_item_id' => $insertedIds[$index]->id,
+                    'id' => $product->id,
+                    'title' => $product->title,
+                    'description' => $product->description,
+                    'metaTitle' => $product->metaTitle,
+                    'metaDescription' => $product->metaDescription,
+                    'SEOKeywords' => $product->SEOKeywords,
+                ];
+            }
+
+            $rabbit->publishBatch(Queue::ProductTranslate->value, $payloads);
+
+            // Update job total_items
+            $job->increment('total_items', count($validProducts));
+
+        } catch (\Exception $e) {
+            echo "[PRODUCT SYNC] Batch failed: {$e->getMessage()}\n";
+        }
     }
 }

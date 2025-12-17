@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\DTOs\TranslationMessageDto;
 use App\Enums\JobItemStatus;
+use App\Enums\Queue;
 use App\Models\JobItem;
 use App\Models\Translation;
 use Illuminate\Console\Command;
@@ -26,45 +28,44 @@ class TranslationWorker extends Command
         );
 
         $channel = $connection->channel();
-        $channel->queue_declare('product_translate_queue', false, false, false, false);
+        $channel->queue_declare(Queue::ProductTranslate->value, false, false, false, false);
 
-        $this->info('Waiting for product_translate_queue message...');
+        $this->info('Waiting for '.Queue::ProductTranslate->value.' message...');
 
         $callback = function ($message) {
-            $data = json_decode($message->body, true);
-
             $timestamp = date('Y-m-d H:i:s');
-            $id = $data['id'] ?? 'unknown';
-            $title = isset($data['title']) ? substr($data['title'], 0, 40) : 'N/A';
 
-            echo "[{$timestamp}] Processing: {$id} - {$title}...\n";
-
-            // Find the job item by external_id
-            $jobItem = JobItem::query()
-                ->where('external_id', $id)
-                ->where('status', JobItemStatus::Queued)
-                ->first();
-
-            if (! $jobItem) {
-                echo "[{$timestamp}] No queued job item found for external_id: {$id}\n";
+            try {
+                $messageData = TranslationMessageDto::fromArray(json_decode($message->body, true));
+            } catch (\Exception $e) {
+                echo "[{$timestamp}] Error parsing message: {$e->getMessage()}\n";
 
                 return;
             }
 
-            // Update status to processing
+            echo "[{$timestamp}] Processing job item {$messageData->jobItemId} (external ID: {$messageData->externalId})...\n";
+
+            // Find the job item by ID
+            $jobItem = JobItem::query()
+                ->where('id', $messageData->jobItemId)
+                ->first();
+
+            if (!$jobItem) {
+                echo "[{$timestamp}] Job item {$messageData->jobItemId} not found or not in queued status\n";
+
+                return;
+            }
+
             $jobItem->update(['status' => JobItemStatus::Processing]);
 
             try {
-                // Load the job with relationships
                 $job = $jobItem->job()->with(['sourceLanguage', 'targetLanguage', 'prompt'])->first();
 
-                // Prepare the text to translate
-                $sourceText = $this->prepareSourceText($data);
+                $sourceText = $messageData->toSourceTextArray();
 
-                // TODO: Call OpenAI GPT for translation
-                $translatedText = "[TRANSLATED] {$sourceText}";
+                $translatedText = $this->translateText(sourceText: $sourceText);
 
-                // Save the translation
+                // save in db and mark done
                 Translation::create([
                     'job_item_id' => $jobItem->id,
                     'source_text' => $sourceText,
@@ -72,23 +73,21 @@ class TranslationWorker extends Command
                     'language_id' => $job->target_lang_id,
                 ]);
 
-                // Update status to done
                 $jobItem->update(['status' => JobItemStatus::Done]);
 
-                echo "[{$timestamp}] Successfully processed: {$id}\n";
+                echo "[{$timestamp}] Successfully processed job item {$messageData->jobItemId}\n";
             } catch (\Exception $e) {
-                // Update status to error with error message
                 $jobItem->update([
                     'status' => JobItemStatus::Error,
                     'error_message' => $e->getMessage(),
                 ]);
 
-                echo "[{$timestamp}] Error processing {$id}: {$e->getMessage()}\n";
+                echo "[{$timestamp}] Error processing job item {$messageData->jobItemId}: {$e->getMessage()}\n";
             }
         };
 
         $channel->basic_consume(
-            queue: 'product_translate_queue',
+            queue: Queue::ProductTranslate->value,
             consumer_tag: '',
             no_local: false,
             no_ack: false,
@@ -107,30 +106,21 @@ class TranslationWorker extends Command
         return self::SUCCESS;
     }
 
-    private function prepareSourceText(array $data): string
+    private function translateText(array $sourceText): array
     {
-        $parts = [];
+        // TODO: Call OpenAI GPT for translation
+        // temp just prefix with [TRANSLATED]
+        $result = [];
 
-        if (isset($data['title'])) {
-            $parts[] = "Title: {$data['title']}";
+        foreach ($sourceText as $key => $value) {
+            if ($value === null) {
+                $result[$key] = null;
+            } elseif (is_array($value)) {
+                $result[$key] = array_map(fn($item) => "[TRANSLATED] {$item}", $value);
+            } else {
+                $result[$key] = "[TRANSLATED] {$value}";
+            }
         }
-
-        if (isset($data['description'])) {
-            $parts[] = "Description: {$data['description']}";
-        }
-
-        if (isset($data['metaTitle'])) {
-            $parts[] = "Meta Title: {$data['metaTitle']}";
-        }
-
-        if (isset($data['metaDescription'])) {
-            $parts[] = "Meta Description: {$data['metaDescription']}";
-        }
-
-        if (isset($data['SEOKeywords'])) {
-            $parts[] = "SEO Keywords: {$data['SEOKeywords']}";
-        }
-
-        return implode("\n\n", $parts);
+        return $result;
     }
 }

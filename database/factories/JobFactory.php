@@ -2,7 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Enums\JobStatus;
 use App\Models\Integration;
 use App\Models\Language;
 use App\Models\Prompt;
@@ -27,7 +26,6 @@ class JobFactory extends Factory
             'source_lang_id' => Language::factory(),
             'target_lang_id' => Language::factory(),
             'prompt_id' => Prompt::factory(),
-            'status' => fake()->randomElement(JobStatus::cases())->value,
             'total_items' => fake()->numberBetween(0, 100),
         ];
     }

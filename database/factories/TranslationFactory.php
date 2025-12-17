@@ -20,8 +20,20 @@ class TranslationFactory extends Factory
     {
         return [
             'job_item_id' => JobItem::factory(),
-            'source_text' => fake()->paragraph(),
-            'translated_text' => fake()->paragraph(),
+            'source_text' => [
+                'title' => fake()->sentence(),
+                'description' => fake()->paragraph(),
+                'metaTitle' => fake()->sentence(),
+                'metaDescription' => fake()->sentence(),
+                'SEOKeywords' => [fake()->word(), fake()->word(), fake()->word()],
+            ],
+            'translated_text' => [
+                'title' => fake()->sentence(),
+                'description' => fake()->paragraph(),
+                'metaTitle' => fake()->sentence(),
+                'metaDescription' => fake()->sentence(),
+                'SEOKeywords' => [fake()->word(), fake()->word(), fake()->word()],
+            ],
             'language_id' => Language::factory(),
         ];
     }
