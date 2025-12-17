@@ -35,10 +35,6 @@ class TranslationController extends Controller
       return response()->json([
          'message' => 'Product ID list queued successfully',
          'job_type' => 'ids',
-         'summary' => [
-            'total_products' => $totalProducts,
-            'product_ids' => $ids,
-         ],
          'status' => 'queued',
          'queued_at' => now()->toIso8601String(),
       ], 202);
@@ -92,14 +88,6 @@ class TranslationController extends Controller
       return response()->json([
          'message' => 'Page range job queued successfully',
          'job_type' => 'range',
-         'summary' => [
-            'total_pages' => $totalPages,
-            'estimated_products' => $estimatedProducts,
-            'products_per_page' => $limit,
-            'batches_created' => $batchesCreated,
-            'pages_per_batch' => 5,
-         ],
-         'batches' => $batches,
          'status' => 'queued',
          'queued_at' => now()->toIso8601String(),
       ], 202);

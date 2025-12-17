@@ -2,6 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\JobItemStatus;
+use App\Models\Job;
+use App\Models\JobItem;
 use App\Services\DataProvider\ProductDataProviderInterface;
 use App\Services\RabbitMQService;
 use Illuminate\Console\Command;
@@ -47,6 +50,21 @@ class ProductSyncWorker extends Command
                 return;
             }
 
+            // Get or create the job from payload
+            $jobId = $payload['job_id'] ?? null;
+            
+            if (!$jobId) {
+                echo "[PRODUCT SYNC] Error: No job_id provided in payload\n";
+                return;
+            }
+
+            $job = Job::find($jobId);
+            
+            if (!$job) {
+                echo "[PRODUCT SYNC] Error: Job {$jobId} not found\n";
+                return;
+            }
+
             if ($payload['type'] === 'ids') {
 
                 $ids = $payload['ids'] ?? [];
@@ -58,6 +76,14 @@ class ProductSyncWorker extends Command
                 }
 
                 foreach ($products as $product) {
+                    // Create job item in database
+                    $jobItem = JobItem::create([
+                        'job_id' => $job->id,
+                        'external_id' => $product->id,
+                        'status' => JobItemStatus::Queued,
+                    ]);
+
+                    // Publish to translation queue
                     $rabbit->publish(
                         queue: 'product_translate_queue',
                         payload: [
@@ -70,7 +96,7 @@ class ProductSyncWorker extends Command
                         ]
                     );
 
-                    echo "[PRODUCT SYNC] Published product ID {$product->id}\n";
+                    echo "[PRODUCT SYNC] Created job item {$jobItem->id} and published product ID {$product->id}\n";
                 }
             }
             else if ($payload['type'] === 'range') {
@@ -89,7 +115,14 @@ class ProductSyncWorker extends Command
                     );
 
                     foreach ($products as $product) {
+                        // Create job item in database
+                        $jobItem = JobItem::create([
+                            'job_id' => $job->id,
+                            'external_id' => $product->id,
+                            'status' => JobItemStatus::Queued,
+                        ]);
                         
+                        // Publish to translation queue
                         $rabbit->publish(
                             queue: 'product_translate_queue',
                             payload: [
@@ -101,6 +134,8 @@ class ProductSyncWorker extends Command
                                 'SEOKeywords' => $product->SEOKeywords,
                             ]
                         );
+
+                        echo "[PRODUCT SYNC] Created job item {$jobItem->id} for product ID {$product->id}\n";
                     }
 
                     echo "[PRODUCT SYNC] Published all products from page {$page}\n";
