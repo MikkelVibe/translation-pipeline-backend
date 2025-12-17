@@ -2,20 +2,22 @@
 
 namespace App\Console\Commands;
 
+use App\DTOs\ProductDataDto;
+use App\DTOs\ProductSyncMessageDto;
+use App\Enums\JobItemStatus;
+use App\Enums\Queue;
+use App\Models\Job;
+use App\Models\JobItem;
 use App\Services\DataProvider\ProductDataProviderInterface;
 use App\Services\RabbitMQService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use function PHPUnit\Framework\isEmpty;
 
 class ProductSyncWorker extends Command
 {
-    private const PUBLISH_QUEUE_NAME = 'product_translate_queue';
-
-    private const CONSUME_QUEUE_NAME = 'product_fetch_queue';
-
     protected $signature = 'worker:product-sync';
-
     protected $description = 'Fetch products and publish them to RabbitMQ';
 
     public function __construct(
@@ -38,31 +40,38 @@ class ProductSyncWorker extends Command
 
         $channel = $connection->channel();
 
-        $channel->queue_declare(self::CONSUME_QUEUE_NAME, false, false, false, false);
+        $channel->queue_declare(Queue::ProductFetch->value, false, false, false, false);
 
-        $this->info('Waiting for messages on ' . self::CONSUME_QUEUE_NAME);
+        $callback = function ($message) {
+            $rabbit = $this->rabbit;
+            $productService = $this->productService;
 
         $callback = function ($message) {
             $payload = json_decode($message->body, true);
 
-            if (! is_array($payload) || ! isset($payload['type'])) {
+            $result = $this->validateCallback($payload);
+            if (!$result) {
                 return;
             }
 
-            if ($payload['type'] === 'ids') {
-                $ids = $payload['ids'] ?? [];
+            [$messageData, $job] = $result;
 
-                $products = $this->productService->fetchProductsByIds($ids);
+            if ($messageData->isIdsType()) {
+                $products = $productService->fetchProductsByIds($messageData->ids);
 
-                $this->publishProductsToQueue($this->rabbit, $products);
+                if ($products->isEmpty()) {
+                    echo "[PRODUCT SYNC] No products found for provided IDs\n";
 
-                $this->info('[PRODUCT SYNC] Published all products');
+                    return;
+                }
+                // Technically no validation on length
+                $this->processBatch($products, $job, $rabbit);
+            } elseif ($messageData->isRangeType()) {
+                $startPage = $messageData->startPage;
+                $endPage = $messageData->endPage;
+                $limit = $messageData->limit ?? 100;
 
-            } elseif ($payload['type'] === 'range') {
-
-                $startPage = $payload['start_page'];
-                $endPage = $payload['end_page'];
-                $limit = 100;
+                echo "[PRODUCT SYNC] Processing pages {$startPage} to {$endPage}\n";
 
                 for ($page = $startPage; $page <= $endPage; $page++) {
                     $offset = ($page - 1) * $limit;
@@ -72,15 +81,22 @@ class ProductSyncWorker extends Command
                         offset: $offset
                     );
 
-                    $this->publishProductsToQueue($this->rabbit, $products);
+                    if ($products->isEmpty()) {
+                        echo "[PRODUCT SYNC] No products found on page {$page}\n";
 
-                    $this->info("[PRODUCT SYNC] Published all products from page {$page}\n");
+                        continue;
+                    }
+
+                    echo "[PRODUCT SYNC] Processing page {$page} with " . count($products) . " products\n";
+                    $this->processBatch($products, $job, $rabbit);
                 }
+
+                echo "[PRODUCT SYNC] Completed processing pages {$startPage} to {$endPage}\n";
             }
         };
 
         $channel->basic_consume(
-            queue: self::CONSUME_QUEUE_NAME,
+            queue: Queue::ProductFetch->value,
             consumer_tag: '',
             no_local: false,
             no_ack: false,
@@ -99,20 +115,112 @@ class ProductSyncWorker extends Command
         return self::SUCCESS;
     }
 
-    private function publishProductsToQueue(RabbitMQService $rabbit, Collection $products)
+    private function validateProduct(ProductDataDto $product): bool
+    {
+        $isEmpty = empty($product->id);
+
+        if ($isEmpty) {
+            echo "[PRODUCT SYNC] Error validating product";
+        }
+
+        return !$isEmpty;
+        
+    }
+
+    private function validateCallback($payload): ?array
+    {
+        try {
+            $messageData = ProductSyncMessageDto::fromArray($payload);
+        } catch (\Exception $e) {
+            echo "[PRODUCT SYNC] Error parsing message: {$e->getMessage()}\n";
+            return null;
+        }
+
+        $job = Job::find($messageData->jobId);
+
+        if (!$job) {
+            echo "[PRODUCT SYNC] Error: Job {$messageData->jobId} not found\n";
+            return null;
+        }
+
+        return [$messageData, $job];
+    }
+
+    /**
+     * @param Collection<int, ProductDataDto> $products
+     */
+    private function processBatch(Collection $products, Job $job, RabbitMQService $rabbit): void
     {
         if ($products->isEmpty()) {
-            $this->info('[PRODUCT SYNC] No products could be found');
             return;
         }
 
+        // validating products decreases chance of a batch failing and if a batch fails thats 999 wasted. Its very unlikely the batch will fail. But this just removes the potential failing products from ever hitting the batch decreasing the chance further.
+        $validProducts = [];
+
         foreach ($products as $product) {
-            $rabbit->publish(
-                queue: self::PUBLISH_QUEUE_NAME,
-                payload: [
-                    'product' => $product,
-                ]
+            if ($this->validateProduct($product)) {
+                $validProducts[] = $product;
+            }
+        }
+
+        if (empty($validProducts)) {
+            echo "[PRODUCT SYNC] No valid products to process\n";
+
+            return;
+        }
+
+        try {
+            // Prepare values for bulk insert
+            $values = [];
+            $now = now();
+
+            foreach ($validProducts as $product) {
+                $values[] = $job->id;
+                $values[] = $product->id;
+                $values[] = JobItemStatus::Queued->value;
+                $values[] = $now;
+                $values[] = $now;
+            }
+
+            // Build placeholders: (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), ...
+            $placeholders = implode(', ', array_fill(0, count($validProducts), '(?, ?, ?, ?, ?)'));
+
+
+            // TODO: check for injections
+
+            // Raw sql to take advantage of RETURNING in postgres, it gives all generated ids which are needed for the message
+            $insertedIds = \DB::select(
+                "INSERT INTO job_items (job_id, external_id, status, created_at, updated_at) 
+                 VALUES {$placeholders} 
+                 RETURNING id",
+                $values
             );
+
+            // Add the generated id and create the payloads
+            $payloads = [];
+            foreach ($validProducts as $index => $product) {
+                $payloads[] = [
+                    'job_item_id' => $insertedIds[$index]->id,
+                    'id' => $product->id,
+                    'title' => $product->title,
+                    'description' => $product->description,
+                    'metaTitle' => $product->metaTitle,
+                    'metaDescription' => $product->metaDescription,
+                    'SEOKeywords' => $product->SEOKeywords,
+                ];
+            }
+
+            $rabbit->publishBatch(Queue::ProductTranslate->value, $payloads);
+
+            // Update job total_items
+
+
+            // Maybe fucked TODO:
+            $job->increment('total_items', count($validProducts));
+
+        } catch (\Exception $e) {
+            echo "[PRODUCT SYNC] Batch failed: {$e->getMessage()}\n";
         }
     }
 }
