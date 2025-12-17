@@ -46,6 +46,7 @@ class ProductSyncWorker extends Command
             $rabbit = $this->rabbit;
             $productService = $this->productService;
 
+        $callback = function ($message) {
             $payload = json_decode($message->body, true);
 
             $result = $this->validateCallback($payload);
@@ -75,7 +76,7 @@ class ProductSyncWorker extends Command
                 for ($page = $startPage; $page <= $endPage; $page++) {
                     $offset = ($page - 1) * $limit;
 
-                    $products = $productService->fetchProducts(
+                    $products = $this->productService->fetchProducts(
                         limit: $limit,
                         offset: $offset
                     );

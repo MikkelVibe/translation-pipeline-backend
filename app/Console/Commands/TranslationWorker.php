@@ -12,6 +12,8 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class TranslationWorker extends Command
 {
+    private const CONSUME_QUEUE_NAME = 'product_translate_queue';
+
     protected $signature = 'worker:translation';
 
     protected $description = 'Consume translation jobs from RabbitMQ';
