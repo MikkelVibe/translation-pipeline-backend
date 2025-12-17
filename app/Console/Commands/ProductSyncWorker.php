@@ -13,6 +13,7 @@ use App\Services\RabbitMQService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use function PHPUnit\Framework\isEmpty;
 
 class ProductSyncWorker extends Command
 {
@@ -41,7 +42,7 @@ class ProductSyncWorker extends Command
 
         $channel->queue_declare(Queue::ProductFetch->value, false, false, false, false);
 
-        $callback = function ($message) use (&$rabbit, &$productService) {
+        $callback = function ($message) {
             $rabbit = $this->rabbit;
             $productService = $this->productService;
 
@@ -62,7 +63,7 @@ class ProductSyncWorker extends Command
 
                     return;
                 }
-
+                // Technically no validation on length
                 $this->processBatch($products, $job, $rabbit);
             } elseif ($messageData->isRangeType()) {
                 $startPage = $messageData->startPage;
@@ -115,20 +116,14 @@ class ProductSyncWorker extends Command
 
     private function validateProduct(ProductDataDto $product): bool
     {
-        try {
-            // Check if id exists and is valid
-            if (empty($product->id)) {
-                echo "[PRODUCT SYNC] Invalid product: empty id\n";
+        $isEmpty = empty($product->id);
 
-                return false;
-            }
-
-            return true;
-        } catch (\Exception $e) {
-            echo "[PRODUCT SYNC] Error validating product: {$e->getMessage()}\n";
-
-            return false;
+        if ($isEmpty) {
+            echo "[PRODUCT SYNC] Error validating product";
         }
+
+        return !$isEmpty;
+        
     }
 
     private function validateCallback($payload): ?array
@@ -161,13 +156,10 @@ class ProductSyncWorker extends Command
 
         // validating products decreases chance of a batch failing and if a batch fails thats 999 wasted. Its very unlikely the batch will fail. But this just removes the potential failing products from ever hitting the batch decreasing the chance further.
         $validProducts = [];
-        $invalidCount = 0;
 
         foreach ($products as $product) {
             if ($this->validateProduct($product)) {
                 $validProducts[] = $product;
-            } else {
-                $invalidCount++;
             }
         }
 
@@ -192,6 +184,9 @@ class ProductSyncWorker extends Command
 
             // Build placeholders: (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), ...
             $placeholders = implode(', ', array_fill(0, count($validProducts), '(?, ?, ?, ?, ?)'));
+
+
+            // TODO: check for injections
 
             // Raw sql to take advantage of RETURNING in postgres, it gives all generated ids which are needed for the message
             $insertedIds = \DB::select(
@@ -218,6 +213,9 @@ class ProductSyncWorker extends Command
             $rabbit->publishBatch(Queue::ProductTranslate->value, $payloads);
 
             // Update job total_items
+
+
+            // Maybe fucked TODO:
             $job->increment('total_items', count($validProducts));
 
         } catch (\Exception $e) {

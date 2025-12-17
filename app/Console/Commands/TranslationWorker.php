@@ -43,8 +43,6 @@ class TranslationWorker extends Command
                 return;
             }
 
-            echo "[{$timestamp}] Processing job item {$messageData->jobItemId} (external ID: {$messageData->externalId})...\n";
-
             // Find the job item by ID
             $jobItem = JobItem::query()
                 ->where('id', $messageData->jobItemId)
