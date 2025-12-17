@@ -40,7 +40,7 @@ class TranslationController extends Controller
          'source_lang_id' => $sourceLang->id,
          'target_lang_id' => $targetLang->id,
          'status' => JobStatus::Pending,
-         'total_items' => $totalProducts,
+         'total_items' => 0,
       ]);
 
       $this->rabbit->publish(
@@ -90,7 +90,7 @@ class TranslationController extends Controller
          'source_lang_id' => $sourceLang->id,
          'target_lang_id' => $targetLang->id,
          'status' => JobStatus::Pending,
-         'total_items' => $estimatedProducts,
+         'total_items' => 0,
       ]);
 
       for ($i = $startPage; $i <= $endPage; $i += 5) {
