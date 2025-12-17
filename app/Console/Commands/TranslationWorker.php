@@ -41,7 +41,7 @@ class TranslationWorker extends Command
                 $messageData = TranslationMessageDto::fromArray(json_decode($message->body, true));
             } catch (\Exception $e) {
                 echo "[{$timestamp}] Error parsing message: {$e->getMessage()}\n";
-
+                $message->ack();
                 return;
             }
 
@@ -51,8 +51,8 @@ class TranslationWorker extends Command
                 ->first();
 
             if (!$jobItem) {
-                echo "[{$timestamp}] Job item {$messageData->jobItemId} not found or not in queued status\n";
-
+                echo "[{$timestamp}] Job item {$messageData->jobItemId} not found\n";
+                $message->ack();
                 return;
             }
 
@@ -76,6 +76,8 @@ class TranslationWorker extends Command
                 $jobItem->update(['status' => JobItemStatus::Done]);
 
                 echo "[{$timestamp}] Successfully processed job item {$messageData->jobItemId}\n";
+                
+                $message->ack();
             } catch (\Exception $e) {
                 $jobItem->update([
                     'status' => JobItemStatus::Error,
@@ -83,6 +85,8 @@ class TranslationWorker extends Command
                 ]);
 
                 echo "[{$timestamp}] Error processing job item {$messageData->jobItemId}: {$e->getMessage()}\n";
+                
+                $message->ack();
             }
         };
 

@@ -49,6 +49,7 @@ class ProductSyncWorker extends Command
 
             $result = $this->validateCallback($payload);
             if (!$result) {
+                $message->ack();
                 return;
             }
 
@@ -59,7 +60,7 @@ class ProductSyncWorker extends Command
 
                 if ($products->isEmpty()) {
                     echo "[PRODUCT SYNC] No products found for provided IDs\n";
-
+                    $message->ack();
                     return;
                 }
                 // Technically no validation on length
@@ -92,6 +93,8 @@ class ProductSyncWorker extends Command
 
                 echo "[PRODUCT SYNC] Completed processing pages {$startPage} to {$endPage}\n";
             }
+            
+            $message->ack();
         };
 
         $channel->basic_consume(
