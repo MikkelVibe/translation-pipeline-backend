@@ -13,7 +13,6 @@ use App\Services\RabbitMQService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
-use function PHPUnit\Framework\isEmpty;
 
 class ProductSyncWorker extends Command
 {
@@ -46,7 +45,6 @@ class ProductSyncWorker extends Command
             $rabbit = $this->rabbit;
             $productService = $this->productService;
 
-        $callback = function ($message) {
             $payload = json_decode($message->body, true);
 
             $result = $this->validateCallback($payload);
@@ -65,6 +63,7 @@ class ProductSyncWorker extends Command
                     return;
                 }
                 // Technically no validation on length
+
                 $this->processBatch($products, $job, $rabbit);
             } elseif ($messageData->isRangeType()) {
                 $startPage = $messageData->startPage;
