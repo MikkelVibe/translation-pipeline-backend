@@ -25,6 +25,20 @@ services:
       dockerfile: docker/worker-translation/Dockerfile
     environment:
       <<: *rabbitmq-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+    depends_on:
+      - rabbitmq
+    restart: always
+
+  worker-qe:
+    build:
+      context: .
+      dockerfile: docker/worker-qe/Dockerfile
+    environment:
+      <<: *rabbitmq-env
+      RABBITMQ_QE_QUEUE: product_qe_queue
+      COMET_MODEL: Unbabel/wmt20-comet-qe-da
     depends_on:
       - rabbitmq
     restart: always
@@ -37,6 +51,8 @@ services:
       <<: *rabbitmq-env
       SHOPWARE_API_URL: ${SHOPWARE_API_URL}
       SHOPWARE_API_TOKEN: ${SHOPWARE_API_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
     depends_on:
       - rabbitmq
     restart: always

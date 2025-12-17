@@ -1,0 +1,3 @@
+pika==1.3.2
+unbabel-comet==2.2.2
+torch

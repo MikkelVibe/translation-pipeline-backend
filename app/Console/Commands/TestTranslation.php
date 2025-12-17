@@ -10,11 +10,11 @@ use Illuminate\Support\Str;
 class TestTranslation extends Command
 {
     protected $signature = 'test:enqueue-translation {--target=fi} {--source=da}';
-    protected $description = 'Publish a test message to product_translate_queue';
+    protected $description = 'Publish a test message to product_translate_queue. This will also trigger translation and QE';
 
     public function handle()
     {
-        $queueName = config("rabbitmq.queues.translate");
+        $queueName = config("rabbitmq.queues.product_translate");
 
         $jobId = (string) Str::uuid();
         $source = (string) $this->option('source');
@@ -22,21 +22,18 @@ class TestTranslation extends Command
 
         $payload = [
             'jobId' => $jobId,
-            'productId' => 'TEST-123',
             'sourceLanguage' => $source,
             'targetLanguage' => $target,
-            'fields' => [
+            'product' => [
+                'id' => 'TEST-123',
                 'title' => 'Saft og Kraft - Økologisk Æblemost 1L',
                 'description' => '<p>Friskpresset æblemost fra danske æbler. Uden tilsat sukker.</p>',
-                'meta_title' => 'Økologisk æblemost 1L | Saft og Kraft',
-                'meta_description' => 'Køb økologisk æblemost – friskpresset og uden tilsat sukker. Hurtig levering.',
-                'features' => "• Økologisk\n• Dansk produceret\n• 1 liter",
-                'brand' => 'Saft og Kraft',
-                'sku' => 'SKU-ABC-001',
-                'ean' => '5700000000000',
-                'null_example' => null,
+                'metaTitle' => 'Økologisk æblemost 1L | Saft og Kraft',
+                'metaDescription' => 'Køb økologisk æblemost – friskpresset og uden tilsat sukker. Hurtig levering.',
+                'SEOKeywords' => ['Økologisk', 'Æblemost'],
             ],
         ];
+
 
         $connection = new AMQPStreamConnection(
             config('rabbitmq.host'),

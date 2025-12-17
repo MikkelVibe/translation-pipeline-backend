@@ -3,15 +3,15 @@
 // Config file for RabbitMQ
 return [
    // Connection
-   "connection" => [
-      "host" => env("RABBITMQ_HOST", "localhost"),
-      "port" => (int) env("RABBITMQ_PORT", 5672),
-      "user" => env("RABBITMQ_USE","guest"),
-      "password"=> env("RABBITMQ_PASSWORD","guest"),
+   "host" => env("RABBITMQ_HOST", "localhost"),
+   "port" => (int) env("RABBITMQ_PORT", 5672),
+   "user" => env("RABBITMQ_USER","guest"),
+   "password"=> env("RABBITMQ_PASSWORD","guest"),
 
-      // Queues
-      "queues" => [
-         "translate" => env("RABBITMQ_TRANSLATE_QUEUE", "product_translate_queue"),
-      ],
-   ]
-   ];
+   // Queues
+   "queues" => [
+      "product_translate" => env("RABBITMQ_TRANSLATE_QUEUE", "product_translate_queue"),
+      "product_qe" => env("RABBITMQ_QE_QUEUE", "product_qe_queue"),
+      "product_fetch" => env("RABBITMQ_PRODUCT_FETCH_QUEUE", "product_fetch_queue")
+   ],
+];

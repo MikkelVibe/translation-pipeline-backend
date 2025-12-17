@@ -10,9 +10,8 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class ProductSyncWorker extends Command
 {
-    private const PUBLISH_QUEUE_NAME = 'product_translate_queue';
-
-    private const CONSUME_QUEUE_NAME = 'product_fetch_queue';
+    // private const PUBLISH_QUEUE_NAME = 'product_translate_queue';
+    // private const CONSUME_QUEUE_NAME = 'product_fetch_queue';
 
     protected $signature = 'worker:product-sync';
 
@@ -29,58 +28,74 @@ class ProductSyncWorker extends Command
     {
         $this->info('Starting product sync worker...');
 
+
         $connection = new AMQPStreamConnection(
-            env('RABBITMQ_HOST'),
-            env('RABBITMQ_PORT'),
-            env('RABBITMQ_USER'),
-            env('RABBITMQ_PASSWORD')
+            config("rabbitmq.host"),
+            (int) config("rabbitmq.port"),
+            config("rabbitmq.user"),
+            config("rabbitmq.password")
         );
 
         $channel = $connection->channel();
 
-        $channel->queue_declare(self::CONSUME_QUEUE_NAME, false, false, false, false);
+        $consumeQueue = config('rabbitmq.queues.product_fetch');
+        $channel->queue_declare(
+            $consumeQueue,
+            false,
+            false,
+            false,
+            false
+        );
 
-        $this->info('Waiting for messages on ' . self::CONSUME_QUEUE_NAME);
+        $this->info("Waiting for messages on {$consumeQueue}...");
 
         $callback = function ($message) {
-            $payload = json_decode($message->body, true);
+            try {
+                $payload = json_decode($message->body, true);
 
-            if (! is_array($payload) || ! isset($payload['type'])) {
-                return;
-            }
+                if (! \is_array($payload) || ! isset($payload['type'])) {
+                    $message->nack(false, false);
+                    return;
+                }
 
-            if ($payload['type'] === 'ids') {
-                $ids = $payload['ids'] ?? [];
+                if ($payload['type'] === 'ids') {
+                    $ids = $payload['ids'] ?? [];
 
-                $products = $this->productService->fetchProductsByIds($ids);
-
-                $this->publishProductsToQueue($this->rabbit, $products);
-
-                $this->info('[PRODUCT SYNC] Published all products');
-
-            } elseif ($payload['type'] === 'range') {
-
-                $startPage = $payload['start_page'];
-                $endPage = $payload['end_page'];
-                $limit = 100;
-
-                for ($page = $startPage; $page <= $endPage; $page++) {
-                    $offset = ($page - 1) * $limit;
-
-                    $products = $this->productService->fetchProducts(
-                        limit: $limit,
-                        offset: $offset
-                    );
+                    $products = $this->productService->fetchProductsByIds($ids);
 
                     $this->publishProductsToQueue($this->rabbit, $products);
 
-                    $this->info("[PRODUCT SYNC] Published all products from page {$page}\n");
+                    $this->info('[PRODUCT SYNC] Published all products');
+
+                } elseif ($payload['type'] === 'range') {
+
+                    $startPage = $payload['start_page'];
+                    $endPage = $payload['end_page'];
+                    $limit = (int) ($payload['limit'] ?? 100);
+
+                    for ($page = $startPage; $page <= $endPage; $page++) {
+                        $offset = ($page - 1) * $limit;
+
+                        $products = $this->productService->fetchProducts(
+                            limit: $limit,
+                            offset: $offset
+                        );
+
+                        $this->publishProductsToQueue($this->rabbit, $products);
+
+                        $this->info("[PRODUCT SYNC] Published all products from page {$page}\n");
+                    }
                 }
+
+                $message->ack();
+
+            } catch (\Throwable $e) {
+                $message->nack(false, false);
             }
         };
 
         $channel->basic_consume(
-            queue: self::CONSUME_QUEUE_NAME,
+            queue: $consumeQueue,
             consumer_tag: '',
             no_local: false,
             no_ack: false,
@@ -101,6 +116,8 @@ class ProductSyncWorker extends Command
 
     private function publishProductsToQueue(RabbitMQService $rabbit, Collection $products)
     {
+        $publishQueue = config('rabbitmq.queues.product_translate');
+
         if ($products->isEmpty()) {
             $this->info('[PRODUCT SYNC] No products could be found');
             return;
@@ -108,9 +125,16 @@ class ProductSyncWorker extends Command
 
         foreach ($products as $product) {
             $rabbit->publish(
-                queue: self::PUBLISH_QUEUE_NAME,
+                queue: $publishQueue,
                 payload: [
-                    'product' => $product,
+                    "product" => [
+                        "id" => $product->id,
+                        "title" => $product->title,
+                        "description" => $product->description,
+                        "metaTitle" => $product->metaTitle,
+                        "metaDescription" => $product->metaDescription,
+                        "SEOKeywords" => $product->SEOKeywords,
+                    ],
                 ]
             );
         }
