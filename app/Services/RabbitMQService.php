@@ -80,7 +80,7 @@ class RabbitMQService
         );
 
         foreach ($payloads as $payload) {
-            $message = new AMQPMessage(json_encode($payload));
+            $message = new AMQPMessage(body: json_encode($payload));
             $channel->basic_publish($message, '', $queue);
         }
 

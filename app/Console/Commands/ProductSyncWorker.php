@@ -7,7 +7,6 @@ use App\DTOs\ProductSyncMessageDto;
 use App\Enums\JobItemStatus;
 use App\Enums\Queue;
 use App\Models\Job;
-use App\Models\JobItem;
 use App\Services\DataProvider\ProductDataProviderInterface;
 use App\Services\RabbitMQService;
 use Illuminate\Console\Command;
@@ -93,7 +92,6 @@ class ProductSyncWorker extends Command
 
                 echo "[PRODUCT SYNC] Completed processing pages {$startPage} to {$endPage}\n";
             }
-            
             $message->ack();
         };
 
@@ -120,13 +118,12 @@ class ProductSyncWorker extends Command
     private function validateProduct(ProductDataDto $product): bool
     {
         $isEmpty = empty($product->id);
-
         if ($isEmpty) {
             echo "[PRODUCT SYNC] Error validating product";
         }
 
         return !$isEmpty;
-        
+
     }
 
     private function validateCallback($payload): ?array
@@ -135,6 +132,7 @@ class ProductSyncWorker extends Command
             $messageData = ProductSyncMessageDto::fromArray($payload);
         } catch (\Exception $e) {
             echo "[PRODUCT SYNC] Error parsing message: {$e->getMessage()}\n";
+
             return null;
         }
 
@@ -142,6 +140,7 @@ class ProductSyncWorker extends Command
 
         if (!$job) {
             echo "[PRODUCT SYNC] Error: Job {$messageData->jobId} not found\n";
+
             return null;
         }
 
@@ -188,7 +187,6 @@ class ProductSyncWorker extends Command
             // Build placeholders: (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), ...
             $placeholders = implode(', ', array_fill(0, count($validProducts), '(?, ?, ?, ?, ?)'));
 
-
             // TODO: check for injections
 
             // Raw sql to take advantage of RETURNING in postgres, it gives all generated ids which are needed for the message
@@ -214,12 +212,6 @@ class ProductSyncWorker extends Command
             }
 
             $rabbit->publishBatch(Queue::ProductTranslate->value, $payloads);
-
-            // Update job total_items
-
-
-            // Maybe fucked TODO:
-            $job->increment('total_items', count($validProducts));
 
         } catch (\Exception $e) {
             echo "[PRODUCT SYNC] Batch failed: {$e->getMessage()}\n";
