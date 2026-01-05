@@ -7,6 +7,7 @@ use App\Enums\JobItemStatus;
 use App\Enums\Queue;
 use App\Models\JobItem;
 use App\Models\Translation;
+use App\Services\Translation\TranslatorInterface;
 use Illuminate\Console\Command;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 
@@ -18,7 +19,7 @@ class TranslationWorker extends Command
 
     protected $description = 'Consume translation jobs from RabbitMQ';
 
-    public function handle()
+    public function handle(): int
     {
         $this->info('Starting translation worker...');
 
@@ -34,7 +35,10 @@ class TranslationWorker extends Command
 
         $this->info('Waiting for '.Queue::ProductTranslate->value.' message...');
 
-        $callback = function ($message) {
+        // Resolve translator once when handle() is called, not at boot time
+        $translator = app(TranslatorInterface::class);
+
+        $callback = function ($message) use ($translator) {
             $timestamp = date('Y-m-d H:i:s');
 
             try {
@@ -65,7 +69,7 @@ class TranslationWorker extends Command
 
                 $sourceText = $messageData->toSourceTextArray();
 
-                $translatedText = $this->translateText(sourceText: $sourceText);
+                $translatedText = $translator->translate($sourceText, $job);
 
                 // save in db and mark done
                 Translation::create([
@@ -110,26 +114,5 @@ class TranslationWorker extends Command
         $connection->close();
 
         return self::SUCCESS;
-    }
-
-    private function translateText(array $sourceText): array
-    {
-        // TODO: Call OpenAI GPT for translation
-        // temp just prefix with [TRANSLATED]
-        $result = [];
-
-        sleep(3);
-
-        foreach ($sourceText as $key => $value) {
-            if ($value === null) {
-                $result[$key] = null;
-            } elseif (is_array($value)) {
-                $result[$key] = array_map(fn ($item) => "[TRANSLATED] {$item}", $value);
-            } else {
-                $result[$key] = "[TRANSLATED] {$value}";
-            }
-        }
-
-        return $result;
     }
 }

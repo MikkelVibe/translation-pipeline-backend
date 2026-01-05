@@ -15,6 +15,9 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
 
     public function getTotalCount(): int
     {
+        // TODO: Remove hardcoded limit for testing
+        return 10;
+
         $url = "{$this->baseUrl}/store-api/product";
 
         $response = Http::withHeaders([
@@ -44,6 +47,9 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
         $url = "{$this->baseUrl}/store-api/product";
 
         $page = intdiv($offset, $limit) + 1;
+
+        // TODO: Remove hardcoded limit for testing
+        $limit = min($limit, 10);
 
         $response = Http::withHeaders([
             'sw-access-key' => $this->token,
