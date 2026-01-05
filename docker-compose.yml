@@ -1,9 +1,16 @@
-# Shared environment variables using YAML anchors
 x-rabbitmq-env: &rabbitmq-env
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_PORT: 5672
-  RABBITMQ_USER: guest
-  RABBITMQ_PASSWORD: guest
+  RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+
+x-postgres-env: &postgres-env
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_DATABASE: ${DB_DATABASE:-translatedb}
+  DB_USERNAME: ${DB_USERNAME:-translator}
+  DB_PASSWORD: ${DB_PASSWORD:-translatorswag1234}
+  DB_CONNECTION: pgsql
 
 services:
   rabbitmq:
@@ -13,10 +20,23 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    restart: always
+
+  postgres:
+    image: postgres:17
+    container_name: tpb-postgres
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-translatedb}
+      POSTGRES_USER: ${DB_USERNAME:-translator}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-translatorswag1234}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     restart: always
 
   worker-translation:
@@ -24,7 +44,7 @@ services:
       context: .
       dockerfile: docker/worker-translation/Dockerfile
     environment:
-      <<: *rabbitmq-env
+      <<: [*rabbitmq-env, *postgres-env]
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
     depends_on:
@@ -41,6 +61,7 @@ services:
       COMET_MODEL: Unbabel/wmt20-comet-qe-da
     depends_on:
       - rabbitmq
+      - postgres
     restart: always
 
   worker-product-sync:
@@ -48,15 +69,18 @@ services:
       context: .
       dockerfile: docker/worker-product-sync/Dockerfile
     environment:
-      <<: *rabbitmq-env
+      <<: [*rabbitmq-env, *postgres-env]
       SHOPWARE_API_URL: ${SHOPWARE_API_URL}
       SHOPWARE_API_TOKEN: ${SHOPWARE_API_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
     depends_on:
       - rabbitmq
+      - postgres
     restart: always
 
 volumes:
   rabbitmq_data:
+    driver: local
+  postgres_data:
     driver: local

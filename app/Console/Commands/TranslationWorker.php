@@ -2,6 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\DTOs\TranslationMessageDto;
+use App\Enums\JobItemStatus;
+use App\Enums\Queue;
+use App\Models\JobItem;
+use App\Models\Translation;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -12,8 +17,6 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 class TranslationWorker extends Command
 {
-    // private const CONSUME_QUEUE_NAME = 'product_translate_queue';
-
     protected $signature = 'worker:translation';
 
     protected $description = 'Consuming translation jobs from RabbitMQ';
@@ -24,11 +27,11 @@ class TranslationWorker extends Command
         parent::__construct();
     }
 
-    public function handle(): int
+    public function handle()
     {
         $this->info('Starting translation worker...');
 
-        $publishQueue = config("rabbitmq.queues.product_translate");
+        $publishQueue = config('rabbitmq.queues.' . Queue::ProductTranslate->value);
 
         $connection = new AMQPStreamConnection(
             config("rabbitmq.host"),
@@ -56,28 +59,34 @@ class TranslationWorker extends Command
         $callback = function ($message) use ($publishQueue) {
             $timestamp = now()->format('Y-m-d H:i:s');
 
-            try {
-                $payload = json_decode($message->body, true, 512, JSON_THROW_ON_ERROR);
+            $qeFieldList = ["title", "description", "metaTitle", "metaDescription"];
 
-                // MASTER: Expect payload structure from ProductSyncWorker
-                $product = $payload['product'] ?? null;
-                if (!\is_array($product)) {
-                    $this->warn('[TRANSLATION] Invalid message format - missing product data');
+            try {
+                $raw = json_decode($message->body, true, 512, JSON_THROW_ON_ERROR);
+                if (!\is_array($raw)) {
+                    throw new \RuntimeException("Message body is not a JSON object.");
+                }
+
+                // Normalizing payloads to have crosscompatible message shapes to both persistance and QE analysis
+                $jobId = (string) ($raw["jobId"] ?? Str::uuid());
+                $sourceLanguage = (string) ($raw["sourceLanguage"] ?? "da");
+                $targetLanguage = (string) ($raw["targetLanguage"] ?? "fi");
+
+                $jobItemId = $raw["job_item_id"] ?? $raw["jobItemId"] ?? null;
+
+                if (isset($raw['product']) && \is_array($raw['product'])) {
+                    $fields = $raw['product'];
+                } else {
+                    $fields = $raw;
+                }
+
+                if (!\is_array($fields)) {
+                    $this->warn("[{$timestamp}] [TRANSLATION] Invalid message format - missing product fields");
                     $message->nack(false, false);
                     return;
                 }
 
-                // IDs + language defaults
-                $jobId = (string) ($payload['jobId'] ?? Str::uuid());
-                $productId = $product['id'] ?? ($payload['productId'] ?? 'unknown');
-                $sourceLanguage = (string) ($payload['sourceLanguage'] ?? 'da');
-                $targetLanguage = (string) ($payload['targetLanguage'] ?? 'fi');
-
-                // Fields to translate (prefer explicit 'fields', fallback to product)
-                $fields = $payload['fields'] ?? null;
-                if (!\is_array($fields)) {
-                    $fields = $product;
-                }
+                $productId = (string) ($fields['id'] ?? $raw['productId'] ?? 'unknown');
 
                 $titlePreview = '';
                 if (isset($fields['title']) && \is_string($fields['title'])) {
@@ -89,13 +98,14 @@ class TranslationWorker extends Command
                     "[{$timestamp}] 🔄 Processing jobId={$jobId} productId={$productId} {$titlePreview}"
                 );
 
-                // 1) Prepare prompt + input JSON
+                // Building prompt
                 $inputJson = json_encode(
                     $fields,
                     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
                 );
 
                 $prompt = <<<PROMPT
+            
 Task:
 Translate product content from {$sourceLanguage} to {$targetLanguage} for an online webshop.
 
@@ -118,139 +128,69 @@ Translation rules:
   - Measurements or units
 - Preserve numbers and technical values exactly
 
-SEO rules:
-- Meta titles must be natural, concise, and suitable for search engines
-- Meta descriptions should be clear, informative, and mildly sales-oriented
-- Do NOT invent features, materials, certifications, or specifications
-- Do NOT exaggerate or add marketing claims not present in the source
-- Prefer clarity and correctness over keyword stuffing
-
 Edge cases:
 - If a field is null, keep it null
-- If text is already in {$targetLanguage}, return it unchanged
-- If text contains mixed languages, translate only the {$sourceLanguage} parts
 
 Now translate the following product JSON:
 {$inputJson}
 PROMPT;
-
-                // 2) Call OpenAI
-                $apiKey = env('OPENAI_API_KEY');
-                if (!$apiKey) {
-                    throw new \RuntimeException('OPENAI_API_KEY is missing in environment');
+                // Call OpenAI
+                $apiKey = env("OPENAI_API_KEY");
+                if(!$apiKey) {
+                    throw new \RuntimeException("OPENAI_API_KEY is mising in environment");
                 }
 
-                $model = env('OPENAI_MODEL', 'gpt-4.1-mini');
+                $model = env("OPENAI_MODEL", "gpt-4.1-mini");
 
                 $response = Http::withToken($apiKey)
-                    ->timeout(60)
-                    ->retry(2, 500)
-                    ->post('https://api.openai.com/v1/responses', [
-                        'model' => $model,
-                        'input' => $prompt,
+                    ->timeout(seconds: 60)
+                    ->retry(times: 2, sleepMilliseconds: 500)
+                    ->post("https://api.openai.com/v1/responses", [
+                        "model" => $model,
+                        "input" => $prompt,
                     ]);
 
                 if (!$response->successful()) {
                     throw new \RuntimeException(
-                        "OpenAI error ({$response->status()}): " . $response->body()
+                        message: "OpenAI error ({$response->status()}): {$response->body()}"
                     );
                 }
 
                 $openAi = $response->json();
 
-                // 3) Extract text (should be JSON)
+                // Extract + parse translated JSON
                 $text = $this->extractTextFromOpenAiResponse($openAi);
-
-                // 4) Parse JSON from text
                 $translatedFields = $this->tryParseJsonObject($text);
 
-                // CometQE
-                $qeQueue = config("rabbitmq.queues.product_qe");
+                if (!\is_array($translatedFields)) {
+                    $dir = storage_path("app/ai_test");
+                    @mkdir(directory: $dir, permissions: 0777, recursive: true);
 
-                // Populating src_fields and mt_fields via sweep
-                $qeFields = ["title", "description", "metaTitle", "metaDescription"];
-                $srcFields = [];
-                $mtFields = [];
-                foreach ($qeFields as $field) {
-                    $srcFields[$field] = $fields[$field] ?? null;
-                    $mtFields[$field] = $translatedFields[$field] ?? null;
-                }
-
-                $this->rabbit->publish(
-                    queue: $qeQueue,
-                    payload: [
-                        "jobId" => $jobId,
-                        "productId" => $productId,
-                        "sourceLanguage" => $sourceLanguage,
-                        "targetLanguage" => $targetLanguage,
-                        "src_fields" => $srcFields,
-                        "mt_fields" => $mtFields,
-                    ]
-                );
-
-                // 5) Save raw + parsed to file (before DB)
-                $dir = storage_path('app/ai_test');
-                @mkdir($dir, 0777, true);
-
-                $base = "{$jobId}_{$productId}_" . strtolower($targetLanguage);
-
-                file_put_contents(
-                    "{$dir}/{$base}_openai_raw.json",
-                    json_encode($openAi, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
-                );
-
-                file_put_contents(
-                    "{$dir}/{$base}_input_fields.json",
-                    json_encode($fields, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
-                );
-
-                if ($translatedFields !== null) {
+                    $base = "{$jobId}_{$productId}_" . strtolower($targetLanguage);
                     file_put_contents(
-                        "{$dir}/{$base}_translated_fields.json",
+                        "{$dir}/{$base}_openai_raw.json", 
                         json_encode(
-                            $translatedFields,
+                            $openAi, 
                             JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
                         )
                     );
-                } else {
-                    file_put_contents(
-                        "{$dir}/{$base}_openai_text.txt",
-                        (string) $text
-                    );
+                    file_put_contents("{$dir}/{$base}_openai_text.txt", (string) $text);
+
+                    throw new \RuntimeException("Could not parse valid JSON from OpenAI output (saved debug files).");
                 }
 
-                // 6) Fail fast if JSON couldn't be parsed
-                if ($translatedFields === null) {
-                    throw new \RuntimeException(
-                        'Could not parse valid JSON from OpenAI output. ' .
-                        'Saved raw output to storage/app/ai_test.'
-                    );
-                }
-
-                // TODO: save in DB + publish to next queue
-                
                 $qeQueue = config("rabbitmq.queues.product_qe");
-                if (!\is_string($qeQueue) || $qeQueue === "") {
-                    throw new \RuntimeException("QE-queue is not configured.");
+                if (!\is_string($qeQueue) || $qeQueue === '') {
+                    throw new \RuntimeException("QE queue is not configured");
                 }
 
-                // Fields for Scoring with CometQE
-                $qeFields = [
-                    "title",
-                    "description",
-                    "metaTitle",
-                    "metaDescription",
-                ];
                 $srcFields = [];
-                $mtFields = [];
-
-                foreach ($qeFields as $field) {
-                    $srcFields[$field] = $fields[$field] ?? null;
-                    $mtFields[$field] = $translatedFields[$field] ?? null;
+                $mtFields  = [];
+                foreach ($qeFieldList as $fieldItem) {
+                    $srcFields[$fieldItem] = $fields[$fieldItem] ?? null;
+                    $mtFields[$fieldItem]  = $translatedFields[$fieldItem] ?? null;
                 }
 
-                // Publish QE job to RabbitMQ
-                // TODO: Persistence, retries
                 $this->rabbit->publish(
                     queue: $qeQueue,
                     payload: [
@@ -263,101 +203,89 @@ PROMPT;
                     ]
                 );
 
-                // ACK success
-                $message->ack();
+                if (!empty($jobItemId)) {
+                    $jobItem = JobItem::query()->where('id', $jobItemId)->first();
 
-                $this->info(
-                    "✅ Done jobId={$jobId} productId={$productId} -> saved to storage/app/ai_test"
-                );
+                    if ($jobItem) {
+                        $jobItem->update(['status' => JobItemStatus::Processing]);
+
+                        try {
+                            $job = $jobItem->job()->with(['sourceLanguage', 'targetLanguage', 'prompt'])->first();
+
+                            Translation::create([
+                                'job_item_id' => $jobItem->id,
+                                'source_text' => $fields,
+                                'translated_text' => $translatedFields,
+                                'language_id' => $job->target_lang_id ?? null,
+                            ]);
+
+                            $jobItem->update(['status' => JobItemStatus::Done]);
+                        } catch (\Throwable $e) {
+                            $jobItem->update([
+                                'status' => JobItemStatus::Error,
+                                'error_message' => $e->getMessage(),
+                            ]);
+
+                            Log::error("[TRANSLATION] Persistence failed for jobItemId={$jobItemId}", [
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                    }
+                }
+
+                $message->ack();
+                $this->info("[{$timestamp}] ✅ Done jobId={$jobId} productId={$productId} -> QE published");
+
+            } catch (\JsonException $e) {
+                // Reject invalid Json message. No requeue.
+                Log::warning("[TRANSLATION] Invalid JSON message", ['error' => $e->getMessage(), 'body' => $message->body ?? null]);
+                $message->nack(false, false);
             } catch (\Throwable $e) {
                 Log::error('TranslationWorker failed', [
                     'queue' => $publishQueue,
                     'error' => $e->getMessage(),
-                    'file'=> $e->getFile(),
+                    'file' => $e->getFile(),
                     'line' => $e->getLine(),
-                    'trace' => $e->getTraceAsString(),
-                    'body'  => $message->body ?? null,
+                    'body' => $message->body ?? null,
                 ]);
 
-                $this->error('Error: ' . $e->getMessage());
+                $this->error("[{$timestamp}] Error: " . $e->getMessage());
 
-                // NACK without requeue avoids infinite loops
                 $message->nack(false, false);
             }
         };
-
-        $channel->basic_consume(
-            queue: $publishQueue,
-            consumer_tag: '',
-            no_local: false,
-            no_ack: false,
-            exclusive: false,
-            nowait: false,
-            callback: $callback
-        );
-
-        while ($channel->is_consuming()) {
-            $channel->wait();
-        }
-
-        $channel->close();
-        $connection->close();
-
-        return self::SUCCESS;
     }
 
-    /**
-     * Forsøger at udtrække output-tekst fra OpenAI Responses API json.
-     */
-    private function extractTextFromOpenAiResponse(array $openAi): string
-    {
-        // 1) output[0].content[0].text
-        if (
-            isset($openAi['output'][0]['content'][0]['text']) &&
-            \is_string($openAi['output'][0]['content'][0]['text'])
-        ) {
-            return $openAi['output'][0]['content'][0]['text'];
+    private function handleMessage($message) {
+
+        $payload = json_decode($message->body, true);
+
+        if (!\is_array($payload)) {
+            $this->warn('[TRANSLATION] Invalid JSON payload');
+            return;
         }
 
-        // 2) output_text (nogle klienter/SDK’er bruger dette)
-        if (isset($openAi['output_text']) && \is_string($openAi['output_text'])) {
-            return $openAi['output_text'];
-        }
+        $fields = null;
 
-        // 3) fallback: stringify hele json
-        return json_encode(
-            $openAi,
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-        ) ?: '';
-    }
-
-    /**
-     * Prøver at parse et JSON object fra en tekst.
-     * Returnerer array hvis OK, ellers null.
-     */
-    private function tryParseJsonObject(string $text): ?array
-    {
-        $text = trim($text);
-
-        // Direct JSON?
-        $decoded = json_decode($text, true);
-        if (\is_array($decoded)) {
-            return $decoded;
-        }
-
-        // Try extracting first {...} block
-        $firstBrace = strpos($text, '{');
-        $lastBrace  = strrpos($text, '}');
-
-        if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
-            $maybe = substr($text, $firstBrace, $lastBrace - $firstBrace + 1);
-            $decoded2 = json_decode($maybe, true);
-
-            if (\is_array($decoded2)) {
-                return $decoded2;
+        if (isset($payload['product']) && \is_array($payload['product'])) {
+            $fields = $payload['product'];
+        } else {
+            if (isset($payload['id']) || isset($payload['job_item_id']) || isset($payload['title'])) {
+                $fields = $payload;
             }
         }
 
-        return null;
+        if (!\is_array($fields)) {
+            $this->warn('[TRANSLATION] Invalid message format - missing product data');
+            return;
+        }
+
+        $productId = (string)($fields['id'] ?? $payload['productId'] ?? 'unknown');
+        $this->info("[TRANSLATION] Processing: {$productId}");
+
+        $jobId = (string)($payload['jobId'] ?? Str::uuid());
+        $sourceLanguage = (string)($payload['sourceLanguage'] ?? 'da');
+        $targetLanguage = (string)($payload['targetLanguage'] ?? 'fi');
+
     }
 }
