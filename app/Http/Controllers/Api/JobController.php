@@ -68,7 +68,7 @@ class JobController extends Controller
         $productIds = $validated['product_ids'] ?? [];
         $totalItems = 0;
 
-        if (empty($productIds)) {
+        if (!empty($productIds)) {
             $totalItems = count($productIds);
         } else {
             $totalItems = $this->productDataProvider->getTotalCount();
@@ -123,7 +123,7 @@ class JobController extends Controller
     {
         $job->load(['sourceLanguage', 'targetLanguage', 'prompt']);
 
-        return response()->json(['data' => $job]);
+        return response()->json($job);
     }
 
     // Get paginated job items with translations.
@@ -136,7 +136,7 @@ class JobController extends Controller
         return response()->json($items);
     }
 
-    //Get job items with error status.
+    // Get job items with error status.
     public function errors(Request $request, Job $job): JsonResponse
     {
         $items = $job->items()

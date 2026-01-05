@@ -19,7 +19,7 @@ class AppServiceProvider extends ServiceProvider
         // SHOPWARE DI - Configured with values from config
         $this->app->bind(
             ProductDataProviderInterface::class,
-            fn() => new ShopwareProductDataProvider(
+            fn () => new ShopwareProductDataProvider(
                 baseUrl: rtrim((string) config('services.shopware.url'), '/'),
                 token: (string) config('services.shopware.token'),
             )

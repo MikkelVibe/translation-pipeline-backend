@@ -14,11 +14,9 @@ test('can list all languages', function () {
     $response = $this->getJson('/api/languages');
 
     $response->assertOk()
-        ->assertJsonCount(5, 'data')
+        ->assertJsonCount(5)
         ->assertJsonStructure([
-            'data' => [
-                '*' => ['id', 'code', 'name', 'created_at', 'updated_at'],
-            ],
+            '*' => ['id', 'code', 'name', 'created_at', 'updated_at'],
         ]);
 });
 
@@ -31,8 +29,8 @@ test('can create a language', function () {
     $response = $this->postJson('/api/languages', $data);
 
     $response->assertCreated()
-        ->assertJsonPath('data.code', 'fr')
-        ->assertJsonPath('data.name', 'French');
+        ->assertJsonPath('code', 'fr')
+        ->assertJsonPath('name', 'French');
 
     $this->assertDatabaseHas('languages', $data);
 });
@@ -64,7 +62,7 @@ test('can update a language', function () {
     ]);
 
     $response->assertOk()
-        ->assertJsonPath('data.name', 'American English');
+        ->assertJsonPath('name', 'American English');
 
     $this->assertDatabaseHas('languages', [
         'id' => $language->id,

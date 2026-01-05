@@ -10,19 +10,16 @@ test('can get settings with default values when no settings exist', function () 
 
     $response->assertOk()
         ->assertJsonStructure([
-            'data' => [
-                'max_retries',
-                'retry_delay',
-                'score_threshold',
-                'manual_check_threshold',
-            ],
+            'max_retries',
+            'retry_delay',
+            'score_threshold',
+            'manual_check_threshold',
         ]);
 
-    $data = $response->json('data');
-    expect($data['max_retries'])->toBe(3);
-    expect($data['retry_delay'])->toBe(5000);
-    expect($data['score_threshold'])->toBe(70);
-    expect($data['manual_check_threshold'])->toBe(60);
+    expect($response->json('max_retries'))->toBe(3);
+    expect($response->json('retry_delay'))->toBe(5000);
+    expect($response->json('score_threshold'))->toBe(70);
+    expect($response->json('manual_check_threshold'))->toBe(60);
 });
 
 test('can get existing settings', function () {
@@ -38,11 +35,10 @@ test('can get existing settings', function () {
 
     $response->assertOk();
 
-    $data = $response->json('data');
-    expect($data['max_retries'])->toBe(5);
-    expect($data['retry_delay'])->toBe(10000);
-    expect($data['score_threshold'])->toBe(80);
-    expect($data['manual_check_threshold'])->toBe(50);
+    expect($response->json('max_retries'))->toBe(5);
+    expect($response->json('retry_delay'))->toBe(10000);
+    expect($response->json('score_threshold'))->toBe(80);
+    expect($response->json('manual_check_threshold'))->toBe(50);
 });
 
 test('can update settings', function () {
@@ -57,11 +53,10 @@ test('can update settings', function () {
 
     $response->assertOk();
 
-    $data = $response->json('data');
-    expect($data['max_retries'])->toBe(7);
-    expect($data['retry_delay'])->toBe(15000);
-    expect($data['score_threshold'])->toBe(85);
-    expect($data['manual_check_threshold'])->toBe(55);
+    expect($response->json('max_retries'))->toBe(7);
+    expect($response->json('retry_delay'))->toBe(15000);
+    expect($response->json('score_threshold'))->toBe(85);
+    expect($response->json('manual_check_threshold'))->toBe(55);
 
     $this->assertDatabaseHas('settings', [
         'user_id' => $user->id,
@@ -82,9 +77,8 @@ test('can partially update settings', function () {
 
     $response->assertOk();
 
-    $data = $response->json('data');
-    expect($data['max_retries'])->toBe(10);
-    expect($data['retry_delay'])->toBe(5000); // Unchanged
+    expect($response->json('max_retries'))->toBe(10);
+    expect($response->json('retry_delay'))->toBe(5000); // Unchanged
 });
 
 test('validates max_retries range', function () {

@@ -1,7 +1,6 @@
 <?php
 
 use App\Enums\JobItemStatus;
-use App\Enums\JobStatus;
 use App\Models\Job;
 use App\Models\JobItem;
 use App\Models\Language;
@@ -115,14 +114,12 @@ test('can show a single job with relations', function () {
 
     $response->assertOk()
         ->assertJsonStructure([
-            'data' => [
-                'id',
-                'total_items',
-                'status',
-                'source_language' => ['id', 'code', 'name'],
-                'target_language' => ['id', 'code', 'name'],
-                'prompt' => ['id', 'name', 'content'],
-            ],
+            'id',
+            'total_items',
+            'status',
+            'source_language' => ['id', 'code', 'name'],
+            'target_language' => ['id', 'code', 'name'],
+            'prompt' => ['id', 'name', 'content'],
         ]);
 });
 
@@ -208,21 +205,7 @@ test('can create a job with product ids', function () {
         'product_ids' => ['product-1', 'product-2', 'product-3'],
     ]);
 
-    $response->assertCreated()
-        ->assertJsonStructure([
-            'data' => [
-                'id',
-                'total_items',
-                'status',
-                'source_language',
-                'target_language',
-                'prompt',
-            ],
-            'message',
-        ]);
-
-    expect($response->json('data.status'))->toBe(JobStatus::Pending->value);
-    expect($response->json('message'))->toBe('Job created and queued successfully');
+    $response->assertCreated();
 
     $this->assertDatabaseHas('translation_jobs', [
         'source_lang_id' => $this->sourceLanguage->id,

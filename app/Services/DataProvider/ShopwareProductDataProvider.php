@@ -88,7 +88,7 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
                 'limit' => count($ids),
             ]);
 
-        if ( $response->successful()) {
+        if ($response->successful()) {
             echo "[SHOPWARE] Failed to fetch products by IDs. Status: {$response->status()}\n";
             logger()->error('Failed to fetch products by IDs', [
                 'status' => $response->status(),

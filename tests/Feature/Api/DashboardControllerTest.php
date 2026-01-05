@@ -47,21 +47,18 @@ test('can get dashboard metrics', function () {
 
     $response->assertOk()
         ->assertJsonStructure([
-            'data' => [
-                'totalTranslations',
-                'totalJobs',
-                'activeJobs',
-                'failedJobs',
-                'completedJobs',
-                'queueSize',
-                'errorRate',
-            ],
+            'totalTranslations',
+            'totalJobs',
+            'activeJobs',
+            'failedJobs',
+            'completedJobs',
+            'queueSize',
+            'errorRate',
         ]);
 
-    $data = $response->json('data');
-    expect($data['totalTranslations'])->toBe(5);
-    expect($data['totalJobs'])->toBe(1);
-    expect($data['queueSize'])->toBe(2);
+    expect($response->json('totalTranslations'))->toBe(5);
+    expect($response->json('totalJobs'))->toBe(1);
+    expect($response->json('queueSize'))->toBe(2);
 });
 
 test('metrics returns zeros when no data', function () {
@@ -69,14 +66,13 @@ test('metrics returns zeros when no data', function () {
 
     $response->assertOk();
 
-    $data = $response->json('data');
-    expect($data['totalTranslations'])->toBe(0);
-    expect($data['totalJobs'])->toBe(0);
-    expect($data['activeJobs'])->toBe(0);
-    expect($data['failedJobs'])->toBe(0);
-    expect($data['completedJobs'])->toBe(0);
-    expect($data['queueSize'])->toBe(0);
-    expect($data['errorRate'])->toBe(0);
+    expect($response->json('totalTranslations'))->toBe(0);
+    expect($response->json('totalJobs'))->toBe(0);
+    expect($response->json('activeJobs'))->toBe(0);
+    expect($response->json('failedJobs'))->toBe(0);
+    expect($response->json('completedJobs'))->toBe(0);
+    expect($response->json('queueSize'))->toBe(0);
+    expect($response->json('errorRate'))->toBe(0);
 });
 
 test('can get dashboard charts data', function () {
@@ -84,10 +80,8 @@ test('can get dashboard charts data', function () {
 
     $response->assertOk()
         ->assertJsonStructure([
-            'data' => [
-                'translationsOverTime',
-                'jobStatusDistribution',
-            ],
+            'translationsOverTime',
+            'jobStatusDistribution',
         ]);
 });
 
@@ -114,7 +108,7 @@ test('charts returns job status distribution', function () {
 
     $response->assertOk();
 
-    $distribution = collect($response->json('data.jobStatusDistribution'));
+    $distribution = collect($response->json('jobStatusDistribution'));
 
     expect($distribution->firstWhere('status', 'completed')['count'])->toBe(1);
     expect($distribution->firstWhere('status', 'failed')['count'])->toBe(1);
@@ -133,5 +127,5 @@ test('error rate is calculated correctly', function () {
     $response = $this->getJson('/api/dashboard/metrics');
 
     $response->assertOk();
-    expect($response->json('data.errorRate'))->toEqual(20.0);
+    expect($response->json('errorRate'))->toEqual(20.0);
 });

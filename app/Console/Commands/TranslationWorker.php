@@ -42,6 +42,7 @@ class TranslationWorker extends Command
             } catch (\Exception $e) {
                 echo "[{$timestamp}] Error parsing message: {$e->getMessage()}\n";
                 $message->ack();
+
                 return;
             }
 
@@ -53,6 +54,7 @@ class TranslationWorker extends Command
             if (!$jobItem) {
                 echo "[{$timestamp}] Job item {$messageData->jobItemId} not found\n";
                 $message->ack();
+
                 return;
             }
 
@@ -76,7 +78,7 @@ class TranslationWorker extends Command
                 $jobItem->update(['status' => JobItemStatus::Done]);
 
                 echo "[{$timestamp}] Successfully processed job item {$messageData->jobItemId}\n";
-                
+
                 $message->ack();
             } catch (\Exception $e) {
                 $jobItem->update([
@@ -85,7 +87,7 @@ class TranslationWorker extends Command
                 ]);
 
                 echo "[{$timestamp}] Error processing job item {$messageData->jobItemId}: {$e->getMessage()}\n";
-                
+
                 $message->ack();
             }
         };
@@ -116,15 +118,18 @@ class TranslationWorker extends Command
         // temp just prefix with [TRANSLATED]
         $result = [];
 
+        sleep(3);
+
         foreach ($sourceText as $key => $value) {
             if ($value === null) {
                 $result[$key] = null;
             } elseif (is_array($value)) {
-                $result[$key] = array_map(fn($item) => "[TRANSLATED] {$item}", $value);
+                $result[$key] = array_map(fn ($item) => "[TRANSLATED] {$item}", $value);
             } else {
                 $result[$key] = "[TRANSLATED] {$value}";
             }
         }
+
         return $result;
     }
 }

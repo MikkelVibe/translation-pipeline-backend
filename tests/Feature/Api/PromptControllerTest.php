@@ -19,11 +19,9 @@ test('can list all prompts', function () {
     $response = $this->getJson('/api/prompts');
 
     $response->assertOk()
-        ->assertJsonCount(5, 'data')
+        ->assertJsonCount(5)
         ->assertJsonStructure([
-            'data' => [
-                '*' => ['id', 'name', 'content', 'is_active', 'created_at', 'updated_at'],
-            ],
+            '*' => ['id', 'name', 'content', 'is_active', 'created_at', 'updated_at'],
         ]);
 });
 
@@ -36,8 +34,8 @@ test('can create a prompt', function () {
     $response = $this->postJson('/api/prompts', $data);
 
     $response->assertCreated()
-        ->assertJsonPath('data.name', 'Test Prompt')
-        ->assertJsonPath('data.content', 'Translate the following text to {target_language}:');
+        ->assertJsonPath('name', 'Test Prompt')
+        ->assertJsonPath('content', 'Translate the following text to {target_language}:');
 
     $this->assertDatabaseHas('prompts', $data);
 });
@@ -55,10 +53,10 @@ test('can show a single prompt', function () {
     $response = $this->getJson("/api/prompts/{$prompt->id}");
 
     $response->assertOk()
-        ->assertJsonPath('data.id', $prompt->id)
-        ->assertJsonPath('data.name', $prompt->name)
+        ->assertJsonPath('id', $prompt->id)
+        ->assertJsonPath('name', $prompt->name)
         ->assertJsonStructure([
-            'data' => ['id', 'name', 'content', 'is_active', 'created_at', 'updated_at'],
+            'id', 'name', 'content', 'is_active', 'created_at', 'updated_at',
         ]);
 });
 
@@ -71,8 +69,8 @@ test('can update a prompt', function () {
     ]);
 
     $response->assertOk()
-        ->assertJsonPath('data.name', 'Updated Name')
-        ->assertJsonPath('data.content', 'Updated content');
+        ->assertJsonPath('name', 'Updated Name')
+        ->assertJsonPath('content', 'Updated content');
 
     $this->assertDatabaseHas('prompts', [
         'id' => $prompt->id,
@@ -123,7 +121,7 @@ test('prompt is_active is true when used by running job', function () {
     $response = $this->getJson("/api/prompts/{$prompt->id}");
 
     $response->assertOk()
-        ->assertJsonPath('data.is_active', true);
+        ->assertJsonPath('is_active', true);
 });
 
 test('prompt is_active is false when not used by running jobs', function () {
@@ -141,5 +139,5 @@ test('prompt is_active is false when not used by running jobs', function () {
     $response = $this->getJson("/api/prompts/{$prompt->id}");
 
     $response->assertOk()
-        ->assertJsonPath('data.is_active', false);
+        ->assertJsonPath('is_active', false);
 });

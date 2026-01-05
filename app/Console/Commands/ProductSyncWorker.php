@@ -16,6 +16,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 class ProductSyncWorker extends Command
 {
     protected $signature = 'worker:product-sync';
+
     protected $description = 'Fetch products and publish them to RabbitMQ';
 
     public function __construct(
@@ -49,6 +50,7 @@ class ProductSyncWorker extends Command
             $result = $this->validateCallback($payload);
             if (!$result) {
                 $message->ack();
+
                 return;
             }
 
@@ -60,6 +62,7 @@ class ProductSyncWorker extends Command
                 if ($products->isEmpty()) {
                     echo "[PRODUCT SYNC] No products found for provided IDs\n";
                     $message->ack();
+
                     return;
                 }
                 // Technically no validation on length
@@ -86,7 +89,7 @@ class ProductSyncWorker extends Command
                         continue;
                     }
 
-                    echo "[PRODUCT SYNC] Processing page {$page} with " . count($products) . " products\n";
+                    echo "[PRODUCT SYNC] Processing page {$page} with ".count($products)." products\n";
                     $this->processBatch($products, $job, $rabbit);
                 }
 
@@ -119,7 +122,7 @@ class ProductSyncWorker extends Command
     {
         $isEmpty = empty($product->id);
         if ($isEmpty) {
-            echo "[PRODUCT SYNC] Error validating product";
+            echo '[PRODUCT SYNC] Error validating product';
         }
 
         return !$isEmpty;
@@ -148,7 +151,7 @@ class ProductSyncWorker extends Command
     }
 
     /**
-     * @param Collection<int, ProductDataDto> $products
+     * @param  Collection<int, ProductDataDto>  $products
      */
     private function processBatch(Collection $products, Job $job, RabbitMQService $rabbit): void
     {

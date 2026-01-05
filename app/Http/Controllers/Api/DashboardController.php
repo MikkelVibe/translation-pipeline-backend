@@ -44,15 +44,13 @@ class DashboardController extends Controller
         $errorRate = $totalItems > 0 ? round(($errorItems / $totalItems) * 100, 2) : 0;
 
         return response()->json([
-            'data' => [
-                'totalTranslations' => $totalTranslations,
-                'totalJobs' => $totalJobs,
-                'activeJobs' => $activeJobs,
-                'failedJobs' => $failedJobs,
-                'completedJobs' => $completedJobs,
-                'queueSize' => $queueSize,
-                'errorRate' => $errorRate,
-            ],
+            'totalTranslations' => $totalTranslations,
+            'totalJobs' => $totalJobs,
+            'activeJobs' => $activeJobs,
+            'failedJobs' => $failedJobs,
+            'completedJobs' => $completedJobs,
+            'queueSize' => $queueSize,
+            'errorRate' => $errorRate,
         ]);
     }
 
@@ -122,10 +120,8 @@ class DashboardController extends Controller
         ];
 
         return response()->json([
-            'data' => [
-                'translationsOverTime' => $translationsOverTime,
-                'jobStatusDistribution' => $jobStatusDistribution,
-            ],
+            'translationsOverTime' => $translationsOverTime,
+            'jobStatusDistribution' => $jobStatusDistribution,
         ]);
     }
 }

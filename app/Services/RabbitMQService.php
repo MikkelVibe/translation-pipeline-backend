@@ -23,7 +23,7 @@ class RabbitMQService
 
     private function getConnection(): AMQPStreamConnection
     {
-        if (! $this->connection) {
+        if (!$this->connection) {
             $this->connection = new AMQPStreamConnection(
                 host: env(key: 'RABBITMQ_HOST'),
                 port: env(key: 'RABBITMQ_PORT'),

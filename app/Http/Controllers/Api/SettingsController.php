@@ -16,12 +16,10 @@ class SettingsController extends Controller
 
         if (!$user) {
             return response()->json([
-                'data' => [
-                    'max_retries' => 3,
-                    'retry_delay' => 5000,
-                    'score_threshold' => 70,
-                    'manual_check_threshold' => 60,
-                ],
+                'max_retries' => 3,
+                'retry_delay' => 5000,
+                'score_threshold' => 70,
+                'manual_check_threshold' => 60,
             ]);
         }
 
@@ -35,7 +33,7 @@ class SettingsController extends Controller
             ]
         );
 
-        return response()->json(['data' => $settings]);
+        return response()->json($settings);
     }
 
     public function update(Request $request): JsonResponse
@@ -65,6 +63,6 @@ class SettingsController extends Controller
 
         $settings->update($validated);
 
-        return response()->json(['data' => $settings]);
+        return response()->json($settings);
     }
 }

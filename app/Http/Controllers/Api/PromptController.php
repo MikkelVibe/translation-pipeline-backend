@@ -19,7 +19,7 @@ class PromptController extends Controller
             return $prompt;
         });
 
-        return response()->json(['data' => $prompts]);
+        return response()->json($prompts);
     }
 
     public function store(Request $request): JsonResponse
@@ -31,14 +31,14 @@ class PromptController extends Controller
 
         $prompt = Prompt::create($validated);
 
-        return response()->json(['data' => $prompt], 201);
+        return response()->json($prompt, 201);
     }
 
     public function show(Prompt $prompt): JsonResponse
     {
         $prompt->is_active = $this->isPromptActive($prompt);
 
-        return response()->json(['data' => $prompt]);
+        return response()->json($prompt);
     }
 
     public function update(Request $request, Prompt $prompt): JsonResponse
@@ -50,7 +50,7 @@ class PromptController extends Controller
 
         $prompt->update($validated);
 
-        return response()->json(['data' => $prompt]);
+        return response()->json($prompt);
     }
 
     public function destroy(Prompt $prompt): JsonResponse

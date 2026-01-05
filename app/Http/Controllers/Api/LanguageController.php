@@ -15,8 +15,9 @@ class LanguageController extends Controller
     {
         $languages = Language::all();
 
-        return response()->json(['data' => $languages]);
+        return response()->json($languages);
     }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -26,7 +27,7 @@ class LanguageController extends Controller
 
         $language = Language::create($validated);
 
-        return response()->json(['data' => $language], 201);
+        return response()->json($language, 201);
     }
 
     public function update(Request $request, Language $language): JsonResponse
@@ -44,7 +45,7 @@ class LanguageController extends Controller
 
         $language->update($validated);
 
-        return response()->json(['data' => $language]);
+        return response()->json($language);
     }
 
     public function destroy(Language $language): JsonResponse
