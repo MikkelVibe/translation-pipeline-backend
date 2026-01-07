@@ -13,11 +13,43 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
         private readonly string $token,
     ) {}
 
+    public function getTotalCount(): int
+    {
+        // TODO: Remove hardcoded limit for testing
+        return 10;
+
+        $url = "{$this->baseUrl}/store-api/product";
+
+        $response = Http::withHeaders([
+            'sw-access-key' => $this->token,
+            'Content-Type' => 'application/json',
+        ])
+            ->post($url, [
+                'page' => 1,
+                'limit' => 1,
+                'total-count-mode' => 'exact',
+            ]);
+
+        if (!$response->successful()) {
+            logger()->error('Failed to fetch product count', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return 0;
+        }
+
+        return (int) ($response->json('total') ?? 0);
+    }
+
     public function fetchProducts(int $limit = 100, int $offset = 0): Collection
     {
         $url = "{$this->baseUrl}/store-api/product";
 
         $page = intdiv($offset, $limit) + 1;
+
+        // TODO: Remove hardcoded limit for testing
+        $limit = min($limit, 10);
 
         $response = Http::withHeaders([
             'sw-access-key' => $this->token,
@@ -26,6 +58,7 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
             ->post($url, [
                 'page' => $page,
                 'limit' => $limit,
+                'total-count-mode' => 'none',
             ]);
 
         if (!$response->successful()) {
@@ -33,13 +66,14 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
+
             return collect();
         }
 
         $data = $response->json('elements') ?? [];
 
         return collect($data)
-            ->map(fn(array $raw) => $this->mapToProductDataDto($raw))
+            ->map(fn (array $raw) => $this->mapToProductDataDto($raw))
             ->filter();
     }
 
@@ -49,7 +83,7 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
             return collect();
         }
 
-        $url = "{$this->baseUrl}/product";
+        $url = "{$this->baseUrl}/store-api/product";
 
         $response = Http::withHeaders([
             'sw-access-key' => $this->token,
@@ -74,7 +108,7 @@ class ShopwareProductDataProvider implements ProductDataProviderInterface
         $data = $response->json('elements') ?? [];
 
         return collect($data)
-            ->map(fn(array $raw) => $this->mapToProductDataDto($raw))
+            ->map(fn (array $raw) => $this->mapToProductDataDto($raw))
             ->filter();
     }
 

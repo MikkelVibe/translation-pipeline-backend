@@ -6,6 +6,10 @@ use App\DTOs\TranslationMessageDto;
 use App\DTOs\TranslationPersistMessageDto;
 use App\Enums\Queue;
 use App\Services\RabbitMQService;
+use App\Enums\JobItemStatus;
+use App\Models\JobItem;
+use App\Models\Translation;
+use App\Services\Translation\TranslatorInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -128,7 +132,7 @@ class TranslationWorker extends Command
                   throw new \RuntimeException('OPENAI_API_KEY is missing in environment');
                }
 
-               $model = env('OPENAI_MODEL', 'gpt-4.1-mini');
+               $model = env('OPENAI_MODEL', 'gpt-4o-mini');
 
                $response = Http::withToken($apiKey)
                   ->timeout(60)

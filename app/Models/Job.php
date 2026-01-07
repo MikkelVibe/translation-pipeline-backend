@@ -61,27 +61,39 @@ class Job extends Model
         return $this->hasMany(JobItem::class);
     }
 
-    public function getStatusAttribute(): JobStatus
+    public function getStatusAttribute(): string
     {
-        $itemStatuses = $this->items()->pluck('status');
+        $itemCount = $this->items()->count();
 
-        // If any items have errors, job has failed
-        if ($itemStatuses->contains(JobItemStatus::Error)) {
-            return JobStatus::Failed;
+        // If no items yet, job is pending (still fetching from Shopware)
+        if ($itemCount === 0) {
+            return JobStatus::Pending->value;
         }
 
-        // If all items are done, job is completed
-        if ($itemStatuses->every(fn ($status) => $status === JobItemStatus::Done)) {
-            return JobStatus::Completed;
+        // If not all items have been created yet, job is still running
+        if ($itemCount < $this->total_items) {
+            return JobStatus::Running->value;
+        }
+
+        $statuses = $this->items()->pluck('status');
+
+        // If any items have errors, job has failed
+        if ($statuses->contains(JobItemStatus::Error)) {
+            return JobStatus::Failed->value;
         }
 
         // If any items are processing or queued, job is running
-        if ($itemStatuses->contains(JobItemStatus::Processing) || $itemStatuses->contains(JobItemStatus::Queued)) {
-            return JobStatus::Running;
+        if ($statuses->contains(JobItemStatus::Processing) || $statuses->contains(JobItemStatus::Queued)) {
+            return JobStatus::Running->value;
         }
 
-        // Default to pending
-        return JobStatus::Pending;
+        // If all items are done, job is completed
+        if ($statuses->every(fn ($status) => $status === JobItemStatus::Done)) {
+            return JobStatus::Completed->value;
+        }
+
+        // Default to running (items exist but not all done)
+        return JobStatus::Running->value;
     }
 
     public function getCompletedItemsAttribute(): int

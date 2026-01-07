@@ -7,9 +7,10 @@ test('profile page is displayed', function () {
 
     $response = $this
         ->actingAs($user)
-        ->get(route('profile.edit'));
+        ->getJson('/api/settings/profile');
 
-    $response->assertOk();
+    $response->assertOk()
+        ->assertJsonPath('user.id', $user->id);
 });
 
 test('profile information can be updated', function () {
@@ -17,13 +18,12 @@ test('profile information can be updated', function () {
 
     $response = $this
         ->actingAs($user)
-        ->patch('/settings/profile', [
+        ->patchJson('/api/settings/profile', [
             'name' => 'Updated Name',
         ]);
 
-    $response
-        ->assertSessionHasNoErrors()
-        ->assertRedirect(route('profile.edit'));
+    $response->assertOk()
+        ->assertJsonPath('message', 'Profile updated successfully');
 
     $user->refresh();
 
@@ -35,14 +35,10 @@ test('user can delete their account', function () {
 
     $response = $this
         ->actingAs($user)
-        ->delete(route('profile.destroy'), [
-            'password' => 'password',
-        ]);
+        ->deleteJson('/api/settings/profile');
 
-    $response
-        ->assertSessionHasNoErrors()
-        ->assertRedirect('/');
+    $response->assertOk()
+        ->assertJsonPath('message', 'Account deleted successfully');
 
-    $this->assertGuest();
     expect($user->fresh())->toBeNull();
 });

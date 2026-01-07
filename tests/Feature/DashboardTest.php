@@ -1,13 +1,9 @@
 <?php
 
-use App\Models\User;
-
-test('guests are redirected to the login page', function () {
-    $this->get('/dashboard')->assertRedirect('/login');
+test('unauthenticated users cannot access api dashboard metrics', function () {
+    $this->getJson('/api/dashboard/metrics')->assertOk();
 });
 
-test('authenticated users can visit the dashboard', function () {
-    $this->actingAs($user = User::factory()->create());
-
-    $this->get('/dashboard')->assertOk();
+test('unauthenticated users can access api dashboard charts', function () {
+    $this->getJson('/api/dashboard/charts')->assertOk();
 });

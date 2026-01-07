@@ -15,7 +15,7 @@ class DummyProductDataProvider implements ProductDataProviderInterface
             description: "This is a dummy description for product {$i}.",
             metaTitle: "Buy Dummy Product {$i} - Best Price",
             metaDescription: "Dummy Product {$i} - High quality product with amazing features.",
-            SEOKeywords: ["dummy", "product", "test", "keyword{$i}"],
+            SEOKeywords: ['dummy', 'product', 'test', "keyword{$i}"],
         ));
     }
 
@@ -27,7 +27,7 @@ class DummyProductDataProvider implements ProductDataProviderInterface
             description: "This is a dummy description for product {$id}.",
             metaTitle: "Buy Dummy Product {$id} - Best Price",
             metaDescription: "Dummy Product {$id} - High quality product with amazing features.",
-            SEOKeywords: ["dummy", "product", "test", "keyword{$id}"],
+            SEOKeywords: ['dummy', 'product', 'test', "keyword{$id}"],
         ));
     }
 }

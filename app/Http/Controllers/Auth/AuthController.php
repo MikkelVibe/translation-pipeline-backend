@@ -11,9 +11,6 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    /**
-     * Register a new user.
-     */
     public function register(Request $request): JsonResponse
     {
         $request->validate([
@@ -38,9 +35,6 @@ class AuthController extends Controller
         ], 201);
     }
 
-    /**
-     * Login user and create token.
-     */
     public function login(Request $request): JsonResponse
     {
         $request->validate([
@@ -50,7 +44,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (! $user || ! Hash::check($request->password, $user->password)) {
+        if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);

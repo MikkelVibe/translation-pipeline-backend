@@ -46,9 +46,10 @@ services:
     environment:
       <<: [*rabbitmq-env, *postgres-env]
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
     depends_on:
       - rabbitmq
+      - postgres
     restart: always
 
   worker-qe:
@@ -73,7 +74,7 @@ services:
       SHOPWARE_API_URL: ${SHOPWARE_API_URL}
       SHOPWARE_API_TOKEN: ${SHOPWARE_API_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
     depends_on:
       - rabbitmq
       - postgres
