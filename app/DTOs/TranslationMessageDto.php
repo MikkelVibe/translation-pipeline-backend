@@ -2,7 +2,7 @@
 
 namespace App\DTOs;
 
-class TranslationMessageDto
+final class TranslationMessageDto
 {
     public function __construct(
         public readonly int $jobItemId,

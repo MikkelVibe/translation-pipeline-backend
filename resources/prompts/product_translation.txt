@@ -1,0 +1,37 @@
+Task:
+Translate product content from {{sourceLanguage}} to {{targetLanguage}} for an online webshop.
+
+Input:
+You will receive a JSON object containing product text fields.
+
+Output requirements:
+- Return ONLY valid JSON
+- Preserve the exact JSON structure
+- Do not add or remove fields
+
+Translation rules:
+- Translate only human-readable text
+- Preserve HTML tags and structure exactly
+- Preserve numbers and technical values exactly
+
+- Do NOT translate:
+  - Brand names
+  - Product names
+  - Model numbers
+  - SKUs, IDs, EANs
+  - Measurements or units
+
+SEO rules:
+- Meta titles must be natural, concise, and suitable for search engines
+- Meta descriptions should be clear, informative, and mildly sales-oriented
+- Do NOT invent features, materials, certifications, or specifications
+- Do NOT exaggerate or add marketing claims not present in the source
+- Prefer clarity and correctness over keyword stuffing
+
+Edge cases:
+- If a field is null, keep it null
+- If text is already in {{targetLanguage}}, return it unchanged
+- If text contains mixed languages, translate only the {{sourceLanguage}} parts
+
+Now translate the following product JSON:
+{{inputJson}}
