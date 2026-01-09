@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\JobItemStatus;
+use App\Messages\ProductSyncMessage;
 use App\Models\Job;
 use App\Models\JobItem;
 use App\Models\Language;
@@ -190,11 +191,10 @@ test('can create a job with product ids', function () {
     $mockRabbit = Mockery::mock(RabbitMQService::class);
     $mockRabbit->shouldReceive('publish')
         ->once()
-        ->withArgs(function ($queue, $payload) {
-            return $queue === 'product_fetch_queue'
-                && $payload['type'] === 'ids'
-                && $payload['ids'] === ['product-1', 'product-2', 'product-3']
-                && isset($payload['job_id']);
+        ->withArgs(function (ProductSyncMessage $message) {
+            return $message->isIdsType()
+                && $message->ids === ['product-1', 'product-2', 'product-3']
+                && $message->jobId > 0;
         });
     $this->app->instance(RabbitMQService::class, $mockRabbit);
 
@@ -226,13 +226,12 @@ test('can create a job without product ids to fetch all products', function () {
     $mockRabbit = Mockery::mock(RabbitMQService::class);
     $mockRabbit->shouldReceive('publish')
         ->once()
-        ->withArgs(function ($queue, $payload) {
-            return $queue === 'product_fetch_queue'
-                && $payload['type'] === 'range'
-                && $payload['start_page'] === 1
-                && $payload['end_page'] === 3
-                && $payload['limit'] === 100
-                && isset($payload['job_id']);
+        ->withArgs(function (ProductSyncMessage $message) {
+            return $message->isRangeType()
+                && $message->startPage === 1
+                && $message->endPage === 3
+                && $message->limit === 100
+                && $message->jobId > 0;
         });
     $this->app->instance(RabbitMQService::class, $mockRabbit);
 
@@ -258,11 +257,11 @@ test('creating a job without products queues correct number of range messages', 
     $mockRabbit = Mockery::mock(RabbitMQService::class);
     $mockRabbit->shouldReceive('publish')
         ->times(3)
-        ->withArgs(function ($queue, $payload) use (&$publishedRanges) {
-            if ($queue === 'product_fetch_queue' && $payload['type'] === 'range') {
+        ->withArgs(function (ProductSyncMessage $message) use (&$publishedRanges) {
+            if ($message->isRangeType()) {
                 $publishedRanges[] = [
-                    'start_page' => $payload['start_page'],
-                    'end_page' => $payload['end_page'],
+                    'start_page' => $message->startPage,
+                    'end_page' => $message->endPage,
                 ];
 
                 return true;

@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\DTOs\TranslationMessageDto;
 use App\Enums\JobItemStatus;
 use App\Enums\Queue;
+use App\Messages\TranslationMessage;
 use App\Models\JobItem;
 use App\Models\Translation;
 use App\Services\Translation\TranslatorInterface;
@@ -27,7 +27,7 @@ class TranslationWorker extends Command
             config('queue.connections.rabbitmq.host'),
             config('queue.connections.rabbitmq.port'),
             config('queue.connections.rabbitmq.login'),
-            config('queue.connections.rabbitmq.password')
+            config('queue.connections.rabbitmq.password'),
         );
 
         $channel = $connection->channel();
@@ -42,7 +42,7 @@ class TranslationWorker extends Command
             $timestamp = date('Y-m-d H:i:s');
 
             try {
-                $messageData = TranslationMessageDto::fromArray(json_decode($message->body, true));
+                $messageData = TranslationMessage::fromArray(json_decode($message->body, true));
             } catch (\Exception $e) {
                 echo "[{$timestamp}] Error parsing message: {$e->getMessage()}\n";
                 $message->ack();

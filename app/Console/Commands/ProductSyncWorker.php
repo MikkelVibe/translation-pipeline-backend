@@ -3,9 +3,10 @@
 namespace App\Console\Commands;
 
 use App\DTOs\ProductDataDto;
-use App\DTOs\ProductSyncMessageDto;
 use App\Enums\JobItemStatus;
 use App\Enums\Queue;
+use App\Messages\ProductSyncMessage;
+use App\Messages\TranslationMessage;
 use App\Models\Job;
 use App\Services\DataProvider\ProductDataProviderInterface;
 use App\Services\RabbitMQService;
@@ -132,7 +133,7 @@ class ProductSyncWorker extends Command
     private function validateCallback($payload): ?array
     {
         try {
-            $messageData = ProductSyncMessageDto::fromArray($payload);
+            $messageData = ProductSyncMessage::fromArray($payload);
         } catch (\Exception $e) {
             echo "[PRODUCT SYNC] Error parsing message: {$e->getMessage()}\n";
 
@@ -200,21 +201,16 @@ class ProductSyncWorker extends Command
                 $values
             );
 
-            // Add the generated id and create the payloads
-            $payloads = [];
+            // Create TranslationMessage objects from products
+            $messages = [];
             foreach ($validProducts as $index => $product) {
-                $payloads[] = [
-                    'job_item_id' => $insertedIds[$index]->id,
-                    'id' => $product->id,
-                    'title' => $product->title,
-                    'description' => $product->description,
-                    'metaTitle' => $product->metaTitle,
-                    'metaDescription' => $product->metaDescription,
-                    'SEOKeywords' => $product->SEOKeywords,
-                ];
+                $messages[] = TranslationMessage::fromProductData(
+                    jobItemId: $insertedIds[$index]->id,
+                    product: $product
+                );
             }
 
-            $rabbit->publishBatch(Queue::ProductTranslate->value, $payloads);
+            $rabbit->publishBatch(...$messages);
 
         } catch (\Exception $e) {
             echo "[PRODUCT SYNC] Batch failed: {$e->getMessage()}\n";

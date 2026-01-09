@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Messages\Contracts\Message;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 
@@ -35,8 +36,10 @@ class RabbitMQService
         return $this->connection;
     }
 
-    public function publish(string $queue, array $payload): void
+    public function publish(Message $message): void
     {
+        $queue = $message::queue()->value;
+
         $connection = $this->getConnection();
         $channel = $connection->channel();
 
@@ -48,13 +51,12 @@ class RabbitMQService
             auto_delete: false
         );
 
-        $message = new AMQPMessage(
-            body: json_encode(
-                value: $payload
-            ));
+        $amqpMessage = new AMQPMessage(
+            body: json_encode($message->toArray())
+        );
 
         $channel->basic_publish(
-            msg: $message,
+            msg: $amqpMessage,
             exchange: '',
             routing_key: $queue
         );
@@ -62,11 +64,14 @@ class RabbitMQService
         $channel->close();
     }
 
-    public function publishBatch(string $queue, array $payloads): void
+    public function publishBatch(Message ...$messages): void
     {
-        if (empty($payloads)) {
+        if (empty($messages)) {
             return;
         }
+
+        // All messages must be of the same type
+        $queue = $messages[0]::queue()->value;
 
         $connection = $this->getConnection();
         $channel = $connection->channel();
@@ -79,9 +84,9 @@ class RabbitMQService
             auto_delete: false
         );
 
-        foreach ($payloads as $payload) {
-            $message = new AMQPMessage(body: json_encode($payload));
-            $channel->basic_publish($message, '', $queue);
+        foreach ($messages as $message) {
+            $amqpMessage = new AMQPMessage(body: json_encode($message->toArray()));
+            $channel->basic_publish($amqpMessage, '', $queue);
         }
 
         $channel->close();

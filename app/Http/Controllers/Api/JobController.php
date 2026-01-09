@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\JobItemStatus;
 use App\Enums\JobStatus;
-use App\Enums\Queue;
 use App\Http\Controllers\Controller;
+use App\Messages\ProductSyncMessage;
 use App\Models\Job;
 use App\Services\DataProvider\ProductDataProviderInterface;
 use App\Services\RabbitMQService;
@@ -85,12 +85,7 @@ class JobController extends Controller
 
         if (!empty($productIds)) {
             $this->rabbit->publish(
-                queue: Queue::ProductFetch->value,
-                payload: [
-                    'type' => 'ids',
-                    'ids' => $productIds,
-                    'job_id' => $job->id,
-                ]
+                ProductSyncMessage::forIds($job->id, $productIds)
             );
         } else {
             $totalPages = (int) ceil($totalItems / self::PAGE_LIMIT);
@@ -101,14 +96,7 @@ class JobController extends Controller
                 $endPage = min($startPage + self::PAGES_PER_WORKER - 1, $totalPages);
 
                 $this->rabbit->publish(
-                    queue: Queue::ProductFetch->value,
-                    payload: [
-                        'type' => 'range',
-                        'start_page' => $startPage,
-                        'end_page' => $endPage,
-                        'limit' => self::PAGE_LIMIT,
-                        'job_id' => $job->id,
-                    ]
+                    ProductSyncMessage::forRange($job->id, $startPage, $endPage, self::PAGE_LIMIT)
                 );
             }
         }
