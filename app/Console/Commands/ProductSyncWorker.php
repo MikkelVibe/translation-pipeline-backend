@@ -154,25 +154,14 @@ class ProductSyncWorker extends Command
     /**
      * @param  Collection<int, ProductDataDto>  $products
      */
-    private function processBatch(Collection $products, Job $job, RabbitMQService $rabbit): void
+    private function processBatch(Collection $products, Job $job): void
     {
-        if ($products->isEmpty()) {
-            return;
-        }
-
-        // validating products decreases chance of a batch failing and if a batch fails thats 999 wasted. Its very unlikely the batch will fail. But this just removes the potential failing products from ever hitting the batch decreasing the chance further.
         $validProducts = [];
 
         foreach ($products as $product) {
             if ($this->validateProduct($product)) {
                 $validProducts[] = $product;
             }
-        }
-
-        if (empty($validProducts)) {
-            echo "[PRODUCT SYNC] No valid products to process\n";
-
-            return;
         }
 
         try {
@@ -191,8 +180,6 @@ class ProductSyncWorker extends Command
             // Build placeholders: (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), ...
             $placeholders = implode(', ', array_fill(0, count($validProducts), '(?, ?, ?, ?, ?)'));
 
-            // TODO: check for injections
-
             // Raw sql to take advantage of RETURNING in postgres, it gives all generated ids which are needed for the message
             $insertedIds = \DB::select(
                 "INSERT INTO job_items (job_id, external_id, status, created_at, updated_at) 
@@ -210,10 +197,10 @@ class ProductSyncWorker extends Command
                 );
             }
 
-            $rabbit->publishBatch(...$messages);
+            $this->rabbit->publishBatch(...$messages);
 
         } catch (\Exception $e) {
-            echo "[PRODUCT SYNC] Batch failed: {$e->getMessage()}\n";
         }
     }
 }
+

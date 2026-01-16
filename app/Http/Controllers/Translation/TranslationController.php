@@ -5,12 +5,13 @@ namespace App\Http\Controllers\Translation;
 use App\Enums\JobStatus;
 use App\Enums\Queue;
 use App\Http\Controllers\Controller;
+use App\Messages\TranslationMessage;
 use App\Models\Job;
 use App\Models\Language;
 use App\Services\RabbitMQService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-
+use App\Messages\ProductSyncMessage;
 class TranslationController extends Controller
 {
     public function __construct(
@@ -35,21 +36,15 @@ class TranslationController extends Controller
 
         // Create job record
         $job = Job::create([
-            'user_id' => 1, // hardcoded swag TODO: fix
+            'user_id' => 1, // hardcoded
             'source_lang_id' => $sourceLang->id,
             'target_lang_id' => $targetLang->id,
             'status' => JobStatus::Pending,
             'total_items' => 0,
         ]);
+        $message = ProductSyncMessage::forIds( $job->id, $ids);
 
-        $this->rabbit->publish(
-            queue: Queue::ProductFetch->value,
-            payload: [
-                'type' => 'ids',
-                'ids' => $ids,
-                'job_id' => $job->id,
-            ]
-        );
+        $this->rabbit->publish($message);
 
         return response()->json([
             'message' => 'Product ID list queued successfully',
@@ -75,10 +70,6 @@ class TranslationController extends Controller
         $endPage = $request->end_page;
         $limit = $request->input('limit', 100);
 
-        // Calculate totals
-        $totalPages = $endPage - $startPage + 1;
-        $estimatedProducts = $totalPages * $limit;
-
         // Find languages by code
         $sourceLang = Language::where('code', $request->source_lang)->firstOrFail();
         $targetLang = Language::where('code', $request->target_lang)->firstOrFail();
@@ -96,16 +87,9 @@ class TranslationController extends Controller
             $chunkStart = $i;
             $chunkEnd = min($i + 4, $endPage);
 
-            $this->rabbit->publish(
-                queue: Queue::ProductFetch->value,
-                payload: [
-                    'type' => 'range',
-                    'start_page' => $chunkStart,
-                    'end_page' => $chunkEnd,
-                    'limit' => $limit,
-                    'job_id' => $job->id,
-                ]
-            );
+            $message = ProductSyncMessage::forRange($job->id, $chunkStart, $chunkEnd, $limit);
+
+            $this->rabbit->publish($message);
         }
 
         return response()->json([
